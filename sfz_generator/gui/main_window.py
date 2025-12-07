@@ -81,6 +81,8 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.flap_toggle = Gtk.ToggleButton()
         self.flap_toggle.set_icon_name("sidebar-show-symbolic")
         self.flap_toggle.set_active(True)
+        self.flap_toggle.set_valign(Gtk.Align.CENTER)
+        self.flap_toggle.set_vexpand(False)
         self.header_bar.pack_start(self.flap_toggle)
 
         # Add open file buttons
@@ -1063,7 +1065,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         if self.decay_switch.get_active():
             parts.append(f"ampeg_decay={self.decay_scale.get_value():.3f}")
         if self.sustain_switch.get_active():
-            parts.append(f"ampeg_sustain={self.sustain_scale.get_value():.3f}")
+            parts.append(f"ampeg_sustain={int(self.sustain_scale.get_value() * 100)}")
         if self.release_switch.get_active():
             parts.append(f"ampeg_release={self.release_scale.get_value():.3f}")
             
