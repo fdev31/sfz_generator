@@ -14,6 +14,35 @@ import sounddevice as sd
 import re
 
 from sfz_generator.widgets.waveform_widget import WaveformWidget
+import librosa
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+def midi_to_name(midi):
+    octave = (midi // 12) - 1
+    note = NOTES[midi % 12]
+    return f"{note}{octave}"
+
+def process_midi_note(args):
+    """Generate pitch-shifted sample for a single MIDI note using librosa."""
+    inp, out_dir, midi, root, sr = args
+    
+    semitones = midi - root
+    note_name = midi_to_name(midi)
+    out_wav = f"{note_name}.wav"
+    out_path = os.path.join(out_dir, out_wav)
+
+    try:
+        y, loaded_sr = librosa.load(inp, sr=sr)
+        
+        # Pitch shift
+        y_shifted = librosa.effects.pitch_shift(y, sr=loaded_sr, n_steps=float(semitones))
+        
+        sf.write(out_path, y_shifted, loaded_sr)
+        return (midi, note_name, True, None)
+    except Exception as e:
+        return (midi, note_name, False, str(e))
 
 
 class SFZGenerator(Adw.ApplicationWindow):
@@ -66,6 +95,9 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.download_button.set_sensitive(False)
         self.download_button.connect("clicked", self.on_download_sfz)
         self.header_bar.pack_end(self.download_button)
+
+        self.spinner = Gtk.Spinner()
+        self.header_bar.pack_end(self.spinner)
 
         # Create main content area
         self.content_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -283,6 +315,43 @@ class SFZGenerator(Adw.ApplicationWindow):
         pitch_row.add_suffix(self.pitch_keycenter)
         pitch_group.add(pitch_row)
 
+        gen_group = Adw.PreferencesGroup()
+        gen_group.set_title("Generation Settings")
+        self.left_panel.append(gen_group)
+
+        self.pitch_shift_check = Gtk.CheckButton(label="Enable Pitch-shifting")
+        self.pitch_shift_check.set_tooltip_text("Generates a separate, pre-pitch-shifted audio file for each note.")
+        self.pitch_shift_check.set_active(False)
+        self.pitch_shift_check.connect("toggled", self.on_pitch_shift_toggled)
+
+        gen_row = Adw.ActionRow()
+        gen_row.set_title("Advanced Generation")
+        gen_row.add_suffix(self.pitch_shift_check)
+        gen_group.add(gen_row)
+
+        # Low Key
+        self.low_key_spin = Gtk.SpinButton.new_with_range(0, 127, 1)
+        self.low_key_spin.set_value(24) # C1
+        self.low_key_spin.set_sensitive(False)
+
+        self.low_key_row = Adw.ActionRow()
+        self.low_key_row.set_title("Low Key")
+        self.low_key_row.add_suffix(self.low_key_spin)
+        self.low_key_row.set_visible(False)
+        gen_group.add(self.low_key_row)
+
+
+        # High Key
+        self.high_key_spin = Gtk.SpinButton.new_with_range(0, 127, 1)
+        self.high_key_spin.set_value(84) # C6
+        self.high_key_spin.set_sensitive(False)
+
+        self.high_key_row = Adw.ActionRow()
+        self.high_key_row.set_title("High Key")
+        self.high_key_row.add_suffix(self.high_key_spin)
+        self.high_key_row.set_visible(False)
+        gen_group.add(self.high_key_row)
+
     def create_waveform_display(self):
         # Create waveform frame
         waveform_frame = Gtk.Frame()
@@ -391,36 +460,72 @@ class SFZGenerator(Adw.ApplicationWindow):
         dialog.show()
 
     def on_save_sfz(self, button):
-        if self.sfz_file is None:
+        if self.pitch_shift_check.get_active():
+            if not self.audio_file_path:
+                dialog = Adw.MessageDialog.new(self, "No Audio File", "Please open an audio file first.")
+                dialog.add_response("ok", "OK")
+                dialog.set_modal(True)
+                dialog.present()
+                return
+
+            # Choose a directory to save the instrument
             dialog = Gtk.FileChooserNative.new(
-                "Save SFZ File",
+                "Save Instrument Folder",
                 self,
-                Gtk.FileChooserAction.SAVE,
+                Gtk.FileChooserAction.SELECT_FOLDER,
                 "_Save",
                 "_Cancel",
             )
+            dialog.set_current_name(Path(self.audio_file_path).stem)
 
-            # Add SFZ filter
-            filter_sfz = Gtk.FileFilter()
-            filter_sfz.set_name("SFZ files")
-            filter_sfz.add_pattern("*.sfz")
-            dialog.add_filter(filter_sfz)
 
             def on_response(dialog, response):
                 if response == Gtk.ResponseType.ACCEPT:
-                    file = dialog.get_file()
-                    if file:
-                        sfz_path = file.get_path()
-                        if not sfz_path.endswith(".sfz"):
-                            sfz_path += ".sfz"
-                        self.sfz_file = sfz_path
-                        self.save_sfz_file(sfz_path)
+                    folder = dialog.get_file()
+                    if folder:
+                        output_dir = folder.get_path()
+                        # Run generation in background
+                        thread = threading.Thread(target=self.generate_pitch_shifted_sfz, args=(output_dir,))
+                        thread.daemon = True
+                        thread.start()
                 dialog.destroy()
 
             dialog.connect("response", on_response)
             dialog.show()
         else:
-            self.save_sfz_file(self.sfz_file)
+            # Simple mode: save single SFZ file
+            if self.sfz_file is None:
+                dialog = Gtk.FileChooserNative.new(
+                    "Save SFZ File",
+                    self,
+                    Gtk.FileChooserAction.SAVE,
+                    "_Save",
+                    "_Cancel",
+                )
+                if self.audio_file_path:
+                    dialog.set_current_name(Path(self.audio_file_path).stem + ".sfz")
+
+                # Add SFZ filter
+                filter_sfz = Gtk.FileFilter()
+                filter_sfz.set_name("SFZ files")
+                filter_sfz.add_pattern("*.sfz")
+                dialog.add_filter(filter_sfz)
+
+                def on_response(dialog, response):
+                    if response == Gtk.ResponseType.ACCEPT:
+                        file = dialog.get_file()
+                        if file:
+                            sfz_path = file.get_path()
+                            if not sfz_path.endswith(".sfz"):
+                                sfz_path += ".sfz"
+                            self.sfz_file = sfz_path
+                            self.save_sfz_file(sfz_path)
+                    dialog.destroy()
+
+                dialog.connect("response", on_response)
+                dialog.show()
+            else:
+                self.save_sfz_file(self.sfz_file)
 
     def on_load_sfz(self, button):
         dialog = Gtk.FileChooserNative.new(
@@ -805,50 +910,130 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.waveform_widget.set_loop_points(self.loop_start, self.loop_end)
         self.update_sfz_output()
 
+    def on_pitch_shift_toggled(self, button):
+        is_active = button.get_active()
+        self.low_key_spin.set_sensitive(is_active)
+        self.high_key_spin.set_sensitive(is_active)
+        self.low_key_row.set_visible(is_active)
+        self.high_key_row.set_visible(is_active)
+        self.update_sfz_output()
+
+    def get_extra_sfz_definitions(self):
+        parts = []
+        selected = self.loop_mode.get_selected()
+        loop_mode = self.loop_strings.get_string(selected)
+
+        if loop_mode != "no_loop":
+            parts.append(f"loop_mode={loop_mode}")
+            if loop_mode in ["loop_sustain", "loop_continuous"]:
+                parts.append(f"loop_start={int(self.loop_start)}")
+                parts.append(f"loop_end={int(self.loop_end)}")
+
+        if self.attack_switch.get_active():
+            parts.append(f"ampeg_attack={self.attack_scale.get_value():.3f}")
+        if self.sustain_switch.get_active():
+            parts.append(f"ampeg_sustain={self.sustain_scale.get_value():.3f}")
+        if self.release_switch.get_active():
+            parts.append(f"ampeg_release={self.release_scale.get_value():.3f}")
+            
+        if parts:
+            return " " + " ".join(parts)
+        return ""
+
+    def show_generation_complete_dialog(self, sfz_path, num_successful, num_total):
+        if num_successful == 0:
+            dialog = Adw.MessageDialog.new(self, "Generation Failed", "No samples were generated successfully.")
+            dialog.add_response("ok", "OK")
+        else:
+            dialog = Adw.MessageDialog.new(self, "Generation Complete", f"Successfully generated {num_successful}/{num_total} samples.")
+            dialog.set_body(f"Instrument saved to:\n{os.path.dirname(sfz_path)}")
+            dialog.add_response("ok", "OK")
+        
+        dialog.set_modal(True)
+        dialog.present()
+
+    def generate_pitch_shifted_sfz(self, output_dir):
+        GLib.idle_add(self.spinner.start)
+        GLib.idle_add(self.save_sfz_button.set_sensitive, False)
+        
+        try:
+            inp = self.audio_file_path
+            root = int(self.pitch_keycenter.get_value())
+            low = int(self.low_key_spin.get_value())
+            high = int(self.high_key_spin.get_value())
+            sr = self.sample_rate
+            
+            samples_dir_name = "samples"
+            samples_dir_path = os.path.join(output_dir, samples_dir_name)
+            os.makedirs(samples_dir_path, exist_ok=True)
+
+            tasks = [(inp, samples_dir_path, midi, root, sr) for midi in range(low, high + 1)]
+            
+            results = []
+            num_total = len(tasks)
+            with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+                futures = {executor.submit(process_midi_note, task): task for task in tasks}
+                
+                for future in as_completed(futures):
+                    midi, note_name, success, error = future.result()
+                    if not success:
+                        print(f"Failed to generate {note_name}: {error}")
+                    results.append((midi, note_name, success))
+
+            successful_notes = [(midi, note_name) for midi, note_name, success in sorted(results) if success]
+            
+            if not successful_notes:
+                GLib.idle_add(self.show_generation_complete_dialog, None, 0, num_total)
+                return
+
+            sfz_lines = ["<group>"]
+            extra_definitions = self.get_extra_sfz_definitions()
+
+            for midi, note_name in successful_notes:
+                out_wav = f"{note_name}.wav"
+                sample_path = os.path.join(samples_dir_name, out_wav)
+                sfz_lines.append(
+                    f"<region> sample={sample_path} key={midi} pitch_keycenter={midi}{extra_definitions}"
+                )
+            
+            sfz_content = "\n".join(sfz_lines) + "\n"
+            
+            sfz_path = os.path.join(output_dir, "instrument.sfz")
+            with open(sfz_path, "w") as f:
+                f.write(sfz_content)
+            
+            GLib.idle_add(self.show_generation_complete_dialog, sfz_path, len(successful_notes), num_total)
+
+        except Exception as e:
+            print(f"Error during pitch-shifted generation: {e}")
+        finally:
+            GLib.idle_add(self.spinner.stop)
+            GLib.idle_add(self.save_sfz_button.set_sensitive, True)
+
     def update_sfz_output(self, *args):
+        if self.pitch_shift_check.get_active():
+            self.sfz_buffer.set_text(
+                "// Pitch-shifting is enabled.\n"
+                "// The final SFZ file will be generated on save, containing multiple samples.\n"
+                "// ADSR and loop settings will be applied to all samples."
+            )
+            return
+
         if self.audio_file_path is None:
             self.sfz_buffer.set_text("// No audio file loaded")
             return
 
-        # Generate SFZ content
+        # Generate SFZ content for simple mode
         sfz_content = []
         sfz_content.append("<group>")
-        sfz_content.append("")
         sfz_content.append("<region>")
         sfz_content.append(f"sample={os.path.basename(self.audio_file_path)}")
-
-        sfz_content.append("lokey=0")
-        sfz_content.append("hikey=127")
-
-        # Add loop settings
-        selected = self.loop_mode.get_selected()
-        loop_mode = self.loop_strings.get_string(selected)
-
-        if loop_mode == "no_loop":
-            sfz_content.append("loop_mode=no_loop")
-        elif loop_mode == "one_shot":
-            sfz_content.append("loop_mode=one_shot")
-        elif loop_mode == "loop_sustain":
-            sfz_content.append("loop_mode=loop_sustain")
-            sfz_content.append(f"loop_start={int(self.loop_start)}")
-            sfz_content.append(f"loop_end={int(self.loop_end)}")
-        elif loop_mode == "loop_continuous":
-            sfz_content.append("loop_mode=loop_continuous")
-            sfz_content.append(f"loop_start={int(self.loop_start)}")
-            sfz_content.append(f"loop_end={int(self.loop_end)}")
-
-        # Add ADSR
-        if self.attack_switch.get_active():
-            sfz_content.append(f"ampeg_attack={self.attack_scale.get_value():.3f}")
-        if self.sustain_switch.get_active():
-            sfz_content.append(f"ampeg_sustain={int(self.sustain_scale.get_value()*100)}")
-        if self.release_switch.get_active():
-            sfz_content.append(f"ampeg_release={self.release_scale.get_value():.3f}")
-
-        # Add pitch keycenter
         sfz_content.append(f"pitch_keycenter={int(self.pitch_keycenter.get_value())}")
+        
+        extra_defs = self.get_extra_sfz_definitions()
+        if extra_defs:
+            sfz_content.append(extra_defs)
 
-        # Set content
         self.sfz_buffer.set_text("\n".join(sfz_content))
 
     def on_download_sfz(self, button):
@@ -872,7 +1057,9 @@ class SFZGenerator(Adw.ApplicationWindow):
             base_name = Path(self.audio_file_path).stem
             dialog.set_current_name(f"{base_name}.sfz")
         
-        dialog.set_current_folder(Gtk.File.new_for_path(os.path.dirname(self.current_sfz_path or self.audio_file_path)))
+        if self.current_sfz_path or self.audio_file_path:
+            default_folder_path = os.path.dirname(self.current_sfz_path or self.audio_file_path)
+            dialog.set_current_folder(Gtk.File.new_for_path(default_folder_path))
 
 
         # Add filter
