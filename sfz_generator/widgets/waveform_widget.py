@@ -15,6 +15,7 @@ class WaveformWidget(Gtk.DrawingArea):
 
         # Set initial size
         self.set_size_request(800, 300)
+        self.set_tooltip_text("Waveform display.\n- Scroll to zoom\n- Shift+Scroll to pan\n- Click and drag to move loop markers")
 
         # Initialize variables
         self.audio_data = None
@@ -71,7 +72,10 @@ class WaveformWidget(Gtk.DrawingArea):
     def set_audio_data(self, audio_data, sample_rate):
         self.audio_data = audio_data
         self.sample_rate = sample_rate
-        self.zero_crossings = np.where(librosa.zero_crossings(self.audio_data))[0]
+        if self.audio_data is not None:
+            self.zero_crossings = np.where(librosa.util.zero_crossings(self.audio_data))[0]
+        else:
+            self.zero_crossings = None
         self.queue_draw()
 
     def set_loop_points(self, loop_start, loop_end):
@@ -230,11 +234,7 @@ class WaveformWidget(Gtk.DrawingArea):
         end_sample = min(start_sample + visible_samples, total_samples)
 
         # Draw loop start marker
-        if (
-            self.loop_start is not None
-            and self.loop_start >= start_sample
-            and self.loop_start <= end_sample
-        ):
+        if self.loop_start is not None and self.loop_start >= start_sample and self.loop_start <= end_sample:
             x = (self.loop_start - start_sample) / visible_samples * width
 
             # Draw line

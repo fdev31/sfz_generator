@@ -81,28 +81,27 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.flap_toggle = Gtk.ToggleButton()
         self.flap_toggle.set_icon_name("sidebar-show-symbolic")
         self.flap_toggle.set_active(True)
+        self.flap_toggle.set_tooltip_text("Show/Hide Controls Panel")
         self.flap_toggle.set_valign(Gtk.Align.CENTER)
-        self.flap_toggle.set_vexpand(False)
         self.header_bar.pack_start(self.flap_toggle)
 
         # Add open file buttons
         self.open_button = Gtk.Button(label="Open Audio")
+        self.open_button.set_tooltip_text("Open an audio file (WAV, AIFF, FLAC)")
         self.open_button.connect("clicked", self.on_open_file)
         self.header_bar.pack_start(self.open_button)
 
         self.load_sfz_button = Gtk.Button(label="Load SFZ")
+        self.load_sfz_button.set_tooltip_text("Load an existing SFZ file to edit")
         self.load_sfz_button.connect("clicked", self.on_load_sfz)
         self.header_bar.pack_start(self.load_sfz_button)
 
         self.save_sfz_button = Gtk.Button(label="Save SFZ")
+        self.save_sfz_button.set_tooltip_text(
+            "Save the current configuration as an SFZ file or instrument"
+        )
         self.save_sfz_button.connect("clicked", self.on_save_sfz)
         self.header_bar.pack_start(self.save_sfz_button)
-
-        # Add download button
-        self.download_button = Gtk.Button(label="Download SFZ")
-        self.download_button.set_sensitive(False)
-        self.download_button.connect("clicked", self.on_download_sfz)
-        self.header_bar.pack_end(self.download_button)
 
         self.spinner = Gtk.Spinner()
         self.header_bar.pack_end(self.spinner)
@@ -158,7 +157,6 @@ class SFZGenerator(Adw.ApplicationWindow):
         return False  # Event has not been handled
 
     def create_controls(self):
-        # ... (rest of the file is the same as the user provided)
         # File info group
         file_group = Adw.PreferencesGroup()
         file_group.set_title("File Information")
@@ -184,16 +182,19 @@ class SFZGenerator(Adw.ApplicationWindow):
         playback_box.set_margin_bottom(5)
 
         self.play_button = Gtk.Button(label="▶ Play")
+        self.play_button.set_tooltip_text("Play the audio (Spacebar)")
         self.play_button.set_sensitive(False)
         self.play_button.connect("clicked", self.on_play_clicked)
         playback_box.append(self.play_button)
 
         self.stop_button = Gtk.Button(label="■ Stop")
+        self.stop_button.set_tooltip_text("Stop playback (Spacebar)")
         self.stop_button.set_sensitive(False)
         self.stop_button.connect("clicked", self.on_stop_clicked)
         playback_box.append(self.stop_button)
 
         self.loop_playback_check = Gtk.CheckButton(label="Loop Playback")
+        self.loop_playback_check.set_tooltip_text("Toggle looped playback of the selected loop region")
         self.loop_playback_check.set_sensitive(False)
         playback_box.append(self.loop_playback_check)
 
@@ -208,6 +209,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.left_panel.append(loop_group)
 
         self.zero_crossing_check = Gtk.CheckButton(label="Snap to Zero-Crossing")
+        self.zero_crossing_check.set_tooltip_text("Snap loop points to the nearest zero-crossing to prevent clicks")
         self.zero_crossing_check.set_active(True)
         self.zero_crossing_check.connect("toggled", self.on_zero_crossing_toggled)
         
@@ -222,6 +224,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         )
 
         self.loop_mode = Gtk.DropDown(model=self.loop_strings)
+        self.loop_mode.set_tooltip_text("Set the loop mode for the sample")
         self.loop_mode.set_selected(0)
         self.loop_mode.connect("notify::selected", self.on_loop_mode_changed)
 
@@ -232,6 +235,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         # Loop markers (initially insensitive)
         self.loop_start_spin = Gtk.SpinButton.new_with_range(0, 100, 1)
+        self.loop_start_spin.set_tooltip_text("Set the start point of the loop in samples")
         self.loop_start_spin.set_sensitive(False)
         self.loop_start_spin.connect("value-changed", self.on_loop_marker_changed)
 
@@ -241,6 +245,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         loop_group.add(loop_start_row)
 
         self.loop_end_spin = Gtk.SpinButton.new_with_range(0, 100, 1)
+        self.loop_end_spin.set_tooltip_text("Set the end point of the loop in samples")
         self.loop_end_spin.set_sensitive(False)
         self.loop_end_spin.connect("value-changed", self.on_loop_marker_changed)
 
@@ -270,6 +275,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         delay_row = Adw.ActionRow()
         delay_row.set_title("Delay")
+        delay_row.set_tooltip_text("Enable and set the initial delay before the envelope starts (ampeg_delay)")
         delay_row.add_suffix(self.delay_switch)
         delay_row.add_suffix(self.delay_scale)
         adsr_group.add(delay_row)
@@ -295,6 +301,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         attack_row = Adw.ActionRow()
         attack_row.set_title("Attack")
+        attack_row.set_tooltip_text("Enable and set the attack time (ampeg_attack)")
         attack_row.add_suffix(self.attack_switch)
         attack_row.add_suffix(self.attack_scale)
         adsr_group.add(attack_row)
@@ -320,6 +327,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         hold_row = Adw.ActionRow()
         hold_row.set_title("Hold")
+        hold_row.set_tooltip_text("Enable and set the hold time (ampeg_hold)")
         hold_row.add_suffix(self.hold_switch)
         hold_row.add_suffix(self.hold_scale)
         adsr_group.add(hold_row)
@@ -345,6 +353,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         decay_row = Adw.ActionRow()
         decay_row.set_title("Decay")
+        decay_row.set_tooltip_text("Enable and set the decay time (ampeg_decay)")
         decay_row.add_suffix(self.decay_switch)
         decay_row.add_suffix(self.decay_scale)
         adsr_group.add(decay_row)
@@ -370,6 +379,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         sustain_row = Adw.ActionRow()
         sustain_row.set_title("Sustain")
+        sustain_row.set_tooltip_text("Enable and set the sustain level (ampeg_sustain)")
         sustain_row.add_suffix(self.sustain_switch)
         sustain_row.add_suffix(self.sustain_scale)
         adsr_group.add(sustain_row)
@@ -395,6 +405,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         release_row = Adw.ActionRow()
         release_row.set_title("Release")
+        release_row.set_tooltip_text("Enable and set the release time (ampeg_release)")
         release_row.add_suffix(self.release_switch)
         release_row.add_suffix(self.release_scale)
         adsr_group.add(release_row)
@@ -412,6 +423,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         # Pitch keycenter
         self.pitch_keycenter = Gtk.SpinButton.new_with_range(0, 127, 1)
         self.pitch_keycenter.set_value(60)  # Middle C
+        self.pitch_keycenter.set_tooltip_text("The MIDI note at which the sample plays back at its original pitch")
         self.pitch_keycenter.connect("value-changed", self.update_sfz_output)
 
         pitch_row = Adw.ActionRow()
@@ -424,7 +436,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.left_panel.append(gen_group)
 
         self.pitch_shift_check = Gtk.CheckButton(label="Enable Pitch-shifting")
-        self.pitch_shift_check.set_tooltip_text("Generates a separate, pre-pitch-shifted audio file for each note.")
+        self.pitch_shift_check.set_tooltip_text("Generate a separate, pre-pitch-shifted audio file for each note")
         self.pitch_shift_check.set_active(False)
         self.pitch_shift_check.connect("toggled", self.on_pitch_shift_toggled)
 
@@ -436,6 +448,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         # Low Key
         self.low_key_spin = Gtk.SpinButton.new_with_range(0, 127, 1)
         self.low_key_spin.set_value(24) # C1
+        self.low_key_spin.set_tooltip_text("The lowest MIDI note to generate a sample for")
         self.low_key_spin.set_sensitive(False)
 
         self.low_key_row = Adw.ActionRow()
@@ -444,10 +457,10 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.low_key_row.set_visible(False)
         gen_group.add(self.low_key_row)
 
-
         # High Key
         self.high_key_spin = Gtk.SpinButton.new_with_range(0, 127, 1)
         self.high_key_spin.set_value(84) # C6
+        self.high_key_spin.set_tooltip_text("The highest MIDI note to generate a sample for")
         self.high_key_spin.set_sensitive(False)
 
         self.high_key_row = Adw.ActionRow()
@@ -1172,8 +1185,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.sfz_buffer.set_text("\n".join(sfz_content))
 
     def on_download_sfz(self, button):
-        if self.audio_file_path is None:
-            return
+        pass # Or remove entirely
 
         dialog = Gtk.FileChooserNative.new(
             "Save SFZ File",
