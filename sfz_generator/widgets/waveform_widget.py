@@ -6,6 +6,7 @@ gi.require_version("Gdk", "4.0")
 
 from gi.repository import Gtk, Gdk, GObject, cairo
 import numpy as np
+import librosa
 
 
 class WaveformWidget(Gtk.DrawingArea):
@@ -25,6 +26,8 @@ class WaveformWidget(Gtk.DrawingArea):
         self.dragging_marker = None
         self.is_playing = False
         self.loop_playback = False
+        self.snap_to_zero_crossing = False
+        self.zero_crossings = None
 
         # Colors
         self.bg_color = (0.1, 0.1, 0.1)
@@ -62,9 +65,13 @@ class WaveformWidget(Gtk.DrawingArea):
         # Set draw function
         self.set_draw_func(self.on_draw)
 
+    def set_snap_to_zero_crossing(self, enabled):
+        self.snap_to_zero_crossing = enabled
+
     def set_audio_data(self, audio_data, sample_rate):
         self.audio_data = audio_data
         self.sample_rate = sample_rate
+        self.zero_crossings = np.where(librosa.zero_crossings(self.audio_data))[0]
         self.queue_draw()
 
     def set_loop_points(self, loop_start, loop_end):
@@ -134,7 +141,6 @@ class WaveformWidget(Gtk.DrawingArea):
             # Draw grid lines every 10% of visible range
             grid_interval = visible_samples / 10
             for i in range(11):
-                sample_pos = start_sample + i * grid_interval
                 x_pos = (i / 10) * width
                 cr.move_to(x_pos, 0)
                 cr.line_to(x_pos, height)
@@ -224,7 +230,11 @@ class WaveformWidget(Gtk.DrawingArea):
         end_sample = min(start_sample + visible_samples, total_samples)
 
         # Draw loop start marker
-        if self.loop_start >= start_sample and self.loop_start <= end_sample:
+        if (
+            self.loop_start is not None
+            and self.loop_start >= start_sample
+            and self.loop_start <= end_sample
+        ):
             x = (self.loop_start - start_sample) / visible_samples * width
 
             # Draw line
@@ -242,7 +252,7 @@ class WaveformWidget(Gtk.DrawingArea):
             cr.show_text("Loop Start")
 
         # Draw loop end marker
-        if self.loop_end >= start_sample and self.loop_end <= end_sample:
+        if self.loop_end is not None and self.loop_end >= start_sample and self.loop_end <= end_sample:
             x = (self.loop_end - start_sample) / visible_samples * width
 
             # Draw line
@@ -326,6 +336,10 @@ class WaveformWidget(Gtk.DrawingArea):
 
         sample_pos = start_sample + (x / self.get_width()) * visible_samples
 
+        if self.snap_to_zero_crossing and self.zero_crossings is not None and self.zero_crossings.size > 0:
+            nearest_zc_idx = np.argmin(np.abs(self.zero_crossings - sample_pos))
+            sample_pos = self.zero_crossings[nearest_zc_idx]
+
         if self.dragging_marker == "start":
             self.loop_start = int(
                 np.clip(
@@ -368,8 +382,6 @@ class WaveformWidget(Gtk.DrawingArea):
         total_samples = len(self.audio_data)
         visible_samples = int(total_samples / self.zoom_level)
         start_sample = int(self.pan_offset * total_samples)
-
-        sample_pos = start_sample + (x / self.get_width()) * visible_samples
 
         # Check if clicking near a marker - use pixel-based threshold for more stable detection
         marker_threshold = 10  # pixels

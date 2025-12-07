@@ -78,7 +78,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.main_box.append(self.header_bar)
 
         # Add flap toggle button to header
-        self.flap_toggle = Gtk.ToggleButton.new()
+        self.flap_toggle = Gtk.ToggleButton()
         self.flap_toggle.set_icon_name("sidebar-show-symbolic")
         self.flap_toggle.set_active(True)
         self.header_bar.pack_start(self.flap_toggle)
@@ -119,7 +119,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.left_panel.set_margin_bottom(10)
         self.left_panel.set_margin_start(10)
         self.left_panel.set_margin_end(10)
-
+        
         scrolled_flap = Gtk.ScrolledWindow()
         scrolled_flap.set_child(self.left_panel)
         scrolled_flap.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -203,6 +203,15 @@ class SFZGenerator(Adw.ApplicationWindow):
         loop_group = Adw.PreferencesGroup()
         loop_group.set_title("Loop Settings")
         self.left_panel.append(loop_group)
+
+        self.zero_crossing_check = Gtk.CheckButton(label="Snap to Zero-Crossing")
+        self.zero_crossing_check.set_active(True)
+        self.zero_crossing_check.connect("toggled", self.on_zero_crossing_toggled)
+        
+        zero_crossing_row = Adw.ActionRow()
+        zero_crossing_row.set_title("Snapping")
+        zero_crossing_row.add_suffix(self.zero_crossing_check)
+        loop_group.add(zero_crossing_row)
 
         # Loop mode dropdown - use StringList for GTK4
         self.loop_strings = Gtk.StringList.new(
@@ -757,6 +766,8 @@ class SFZGenerator(Adw.ApplicationWindow):
 
             # Update waveform widget
             self.waveform_widget.set_audio_data(self.audio_data, self.sample_rate)
+            if self.zero_crossing_check.get_active():
+                self.waveform_widget.set_snap_to_zero_crossing(True)
 
             # Update loop marker ranges
             max_samples = len(self.audio_data) - 1
@@ -922,10 +933,27 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.update_sfz_output()
 
     def on_loop_marker_changed(self, spin):
-        self.loop_start = int(self.loop_start_spin.get_value())
-        self.loop_end = int(self.loop_end_spin.get_value())
+        loop_start = int(self.loop_start_spin.get_value())
+        loop_end = int(self.loop_end_spin.get_value())
+
+        if self.zero_crossing_check.get_active() and self.waveform_widget.zero_crossings is not None and self.waveform_widget.zero_crossings.size > 0:
+            if spin == self.loop_start_spin:
+                nearest_idx = np.argmin(np.abs(self.waveform_widget.zero_crossings - loop_start))
+                loop_start = self.waveform_widget.zero_crossings[nearest_idx]
+                self.loop_start_spin.set_value(loop_start) 
+            elif spin == self.loop_end_spin:
+                nearest_idx = np.argmin(np.abs(self.waveform_widget.zero_crossings - loop_end))
+                loop_end = self.waveform_widget.zero_crossings[nearest_idx]
+                self.loop_end_spin.set_value(loop_end)
+        
+        self.loop_start = loop_start
+        self.loop_end = loop_end
         self.waveform_widget.set_loop_points(self.loop_start, self.loop_end)
         self.update_sfz_output()
+
+    def on_zero_crossing_toggled(self, button):
+        is_active = button.get_active()
+        self.waveform_widget.set_snap_to_zero_crossing(is_active)
 
     def on_pitch_shift_toggled(self, button):
         is_active = button.get_active()
@@ -943,8 +971,10 @@ class SFZGenerator(Adw.ApplicationWindow):
         if loop_mode != "no_loop":
             parts.append(f"loop_mode={loop_mode}")
             if loop_mode in ["loop_sustain", "loop_continuous"]:
-                parts.append(f"loop_start={int(self.loop_start)}")
-                parts.append(f"loop_end={int(self.loop_end)}")
+                if self.loop_start is not None:
+                    parts.append(f"loop_start={int(self.loop_start)}")
+                if self.loop_end is not None:
+                    parts.append(f"loop_end={int(self.loop_end)}")
 
         if self.attack_switch.get_active():
             parts.append(f"ampeg_attack={self.attack_scale.get_value():.3f}")
@@ -963,7 +993,8 @@ class SFZGenerator(Adw.ApplicationWindow):
             dialog.add_response("ok", "OK")
         else:
             dialog = Adw.MessageDialog.new(self, "Generation Complete", f"Successfully generated {num_successful}/{num_total} samples.")
-            dialog.set_body(f"Instrument saved to:\n{os.path.dirname(sfz_path)}")
+            if sfz_path:
+                dialog.set_body(f"Instrument saved to:\n{os.path.dirname(sfz_path)}")
             dialog.add_response("ok", "OK")
         
         dialog.set_modal(True)
@@ -1023,6 +1054,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         except Exception as e:
             print(f"Error during pitch-shifted generation: {e}")
+            GLib.idle_add(self.show_generation_complete_dialog, None, 0, 0)
         finally:
             GLib.idle_add(self.spinner.stop)
             GLib.idle_add(self.save_sfz_button.set_sensitive, True)
