@@ -65,17 +65,17 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.stop_playback = False
         self.current_sfz_path = None
 
-        # Create main box
-        self.main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        self.set_content(self.main_box)
+        # Main layout
+        self.toolbar_view = Adw.ToolbarView()
+        self.set_content(self.toolbar_view)
+
+        self.header_bar = Adw.HeaderBar()
+        self.toolbar_view.add_top_bar(self.header_bar)
 
         # Add EventControllerKey
         self.key_controller = Gtk.EventControllerKey.new()
         self.key_controller.connect("key-pressed", self.on_key_press)
         self.add_controller(self.key_controller)
-        # Create header bar
-        self.header_bar = Adw.HeaderBar()
-        self.main_box.append(self.header_bar)
 
         # Add flap toggle button to header
         self.flap_toggle = Gtk.ToggleButton()
@@ -107,7 +107,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         # Create main content area using Adw.Flap
         self.flap = Adw.Flap()
-        self.main_box.append(self.flap)
+        self.toolbar_view.set_content(self.flap)
 
         # Bind toggle button to flap state
         self.flap_toggle.bind_property("active", self.flap, "reveal-flap", GObject.BindingFlags.BIDIRECTIONAL)
@@ -156,6 +156,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         return False  # Event has not been handled
 
     def create_controls(self):
+        # ... (rest of the file is the same as the user provided)
         # File info group
         file_group = Adw.PreferencesGroup()
         file_group.set_title("File Information")
@@ -251,6 +252,31 @@ class SFZGenerator(Adw.ApplicationWindow):
         adsr_group.set_title("Envelope (ADSR)")
         self.left_panel.append(adsr_group)
 
+        # Delay
+        self.delay_switch = Gtk.Switch()
+        self.delay_switch.set_active(False)
+        self.delay_switch.connect("notify::active", self.update_sfz_output)
+
+        self.delay_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, 0, 10, 0.01
+        )
+        self.delay_scale.set_value(0)
+        self.delay_scale.set_sensitive(False)
+        self.delay_scale.set_draw_value(True)
+        self.delay_scale.set_value_pos(Gtk.PositionType.RIGHT)
+        self.delay_scale.connect("value-changed", self.update_sfz_output)
+
+        delay_row = Adw.ActionRow()
+        delay_row.set_title("Delay")
+        delay_row.add_suffix(self.delay_switch)
+        delay_row.add_suffix(self.delay_scale)
+        adsr_group.add(delay_row)
+
+        self.delay_switch.connect(
+            "notify::active",
+            lambda s, p: self.delay_scale.set_sensitive(s.get_active()),
+        )
+
         # Attack
         self.attack_switch = Gtk.Switch()
         self.attack_switch.set_active(False)
@@ -274,6 +300,56 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.attack_switch.connect(
             "notify::active",
             lambda s, p: self.attack_scale.set_sensitive(s.get_active()),
+        )
+
+        # Hold
+        self.hold_switch = Gtk.Switch()
+        self.hold_switch.set_active(False)
+        self.hold_switch.connect("notify::active", self.update_sfz_output)
+
+        self.hold_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, 0, 10, 0.01
+        )
+        self.hold_scale.set_value(0)
+        self.hold_scale.set_sensitive(False)
+        self.hold_scale.set_draw_value(True)
+        self.hold_scale.set_value_pos(Gtk.PositionType.RIGHT)
+        self.hold_scale.connect("value-changed", self.update_sfz_output)
+
+        hold_row = Adw.ActionRow()
+        hold_row.set_title("Hold")
+        hold_row.add_suffix(self.hold_switch)
+        hold_row.add_suffix(self.hold_scale)
+        adsr_group.add(hold_row)
+
+        self.hold_switch.connect(
+            "notify::active",
+            lambda s, p: self.hold_scale.set_sensitive(s.get_active()),
+        )
+
+        # Decay
+        self.decay_switch = Gtk.Switch()
+        self.decay_switch.set_active(False)
+        self.decay_switch.connect("notify::active", self.update_sfz_output)
+
+        self.decay_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, 0, 10, 0.01
+        )
+        self.decay_scale.set_value(1)
+        self.decay_scale.set_sensitive(False)
+        self.decay_scale.set_draw_value(True)
+        self.decay_scale.set_value_pos(Gtk.PositionType.RIGHT)
+        self.decay_scale.connect("value-changed", self.update_sfz_output)
+
+        decay_row = Adw.ActionRow()
+        decay_row.set_title("Decay")
+        decay_row.add_suffix(self.decay_switch)
+        decay_row.add_suffix(self.decay_scale)
+        adsr_group.add(decay_row)
+
+        self.decay_switch.connect(
+            "notify::active",
+            lambda s, p: self.decay_scale.set_sensitive(s.get_active()),
         )
 
         # Sustain
@@ -423,11 +499,13 @@ class SFZGenerator(Adw.ApplicationWindow):
         # Create SFZ output frame
         sfz_frame = Gtk.Frame()
         sfz_frame.set_label("SFZ Output")
+        sfz_frame.set_vexpand(True)
 
         # Create scrolled window for text view
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         scrolled.set_min_content_height(200)
+        scrolled.set_vexpand(True)
 
         # Create text view
         self.sfz_buffer = Gtk.TextBuffer()
@@ -976,8 +1054,14 @@ class SFZGenerator(Adw.ApplicationWindow):
                 if self.loop_end is not None:
                     parts.append(f"loop_end={int(self.loop_end)}")
 
+        if self.delay_switch.get_active():
+            parts.append(f"ampeg_delay={self.delay_scale.get_value():.3f}")
         if self.attack_switch.get_active():
             parts.append(f"ampeg_attack={self.attack_scale.get_value():.3f}")
+        if self.hold_switch.get_active():
+            parts.append(f"ampeg_hold={self.hold_scale.get_value():.3f}")
+        if self.decay_switch.get_active():
+            parts.append(f"ampeg_decay={self.decay_scale.get_value():.3f}")
         if self.sustain_switch.get_active():
             parts.append(f"ampeg_sustain={self.sustain_scale.get_value():.3f}")
         if self.release_switch.get_active():
