@@ -4,7 +4,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gdk", "4.0")
 
-from gi.repository import Gtk, Adw, Gdk, GLib
+from gi.repository import Gtk, Adw, Gdk, GLib, GObject
 import numpy as np
 import soundfile as sf
 import os
@@ -77,6 +77,12 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.header_bar = Adw.HeaderBar()
         self.main_box.append(self.header_bar)
 
+        # Add flap toggle button to header
+        self.flap_toggle = Gtk.ToggleButton.new()
+        self.flap_toggle.set_icon_name("sidebar-show-symbolic")
+        self.flap_toggle.set_active(True)
+        self.header_bar.pack_start(self.flap_toggle)
+
         # Add open file buttons
         self.open_button = Gtk.Button(label="Open Audio")
         self.open_button.connect("clicked", self.on_open_file)
@@ -99,25 +105,36 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.spinner = Gtk.Spinner()
         self.header_bar.pack_end(self.spinner)
 
-        # Create main content area
-        self.content_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        self.content_box.set_margin_top(10)
-        self.content_box.set_margin_bottom(10)
-        self.content_box.set_margin_start(10)
-        self.content_box.set_margin_end(10)
-        self.main_box.append(self.content_box)
+        # Create main content area using Adw.Flap
+        self.flap = Adw.Flap()
+        self.main_box.append(self.flap)
 
-        # Left panel - Controls
+        # Bind toggle button to flap state
+        self.flap_toggle.bind_property("active", self.flap, "reveal-flap", GObject.BindingFlags.BIDIRECTIONAL)
+        
+        # Left panel - Controls - becomes the flap
         self.left_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.left_panel.set_size_request(350, -1)
-        self.content_box.append(self.left_panel)
+        self.left_panel.set_margin_top(10)
+        self.left_panel.set_margin_bottom(10)
+        self.left_panel.set_margin_start(10)
+        self.left_panel.set_margin_end(10)
+
+        scrolled_flap = Gtk.ScrolledWindow()
+        scrolled_flap.set_child(self.left_panel)
+        scrolled_flap.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.flap.set_flap(scrolled_flap)
 
         # Create controls
         self.create_controls()
 
-        # Right panel - Waveform and SFZ output
+        # Right panel - Waveform and SFZ output - becomes the content
         self.right_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        self.content_box.append(self.right_panel)
+        self.right_panel.set_margin_top(10)
+        self.right_panel.set_margin_bottom(10)
+        self.right_panel.set_margin_start(10)
+        self.right_panel.set_margin_end(10)
+        self.flap.set_content(self.right_panel)
 
         # Create waveform display
         self.create_waveform_display()
