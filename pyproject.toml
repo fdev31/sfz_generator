@@ -1,0 +1,138 @@
+[project]
+name = "sfz_generator"
+version = "1.0.0"
+license = "MIT"
+description = "GUI to generate sfz instruments from a single sample"
+authors = [
+    { name = "fdev31", email = "fdev31 <fdev31@gmail.com>" },
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "librosa",
+    "sounddevice",
+    "soundfile",
+    "numpy",
+]
+
+[project.urls]
+homepage = "https://github.com/fdev31/sfz_generator"
+
+[project.scripts]
+sfzgui = "sfz_generator.main:main"
+
+[tool.ruff]
+line-length = 140
+preview = false
+src = [
+    "sfz_generator",
+]
+exclude = [
+    "*_v?.py",
+    ".git",
+]
+target-version = "py311"
+
+[virtualenvs]
+create = true
+in-project = true
+path = "venv"
+options = { system-site-packages = true }
+
+[tool.ruff.lint]
+fixable = [
+    "ALL",
+]
+ignore = [
+    "ANN002",
+    "ANN003",
+    "ANN101",
+    "ANN102",
+    "ANN204",
+    "D105",
+    "D107",
+    "E203",
+    "ISC001",
+    "PLW0603",
+    "PTH118",
+    "RET503",
+    "S101",
+    "S311",
+    "S404",
+    "S602",
+    "S603",
+    "S605",
+    "S607",
+    "TID252",
+]
+select = [
+    "A",
+    "AIR",
+    "ARG",
+    "ASYNC",
+    "B",
+    "B",
+    "C",
+    "C4",
+    "C90",
+    "D",
+    "D",
+    "DTZ",
+    "E",
+    "EM",
+    "EXE",
+    "F",
+    "FA",
+    "FIX",
+    "FLY",
+    "I",
+    "ICN",
+    "INP",
+    "INT",
+    "ISC",
+    "LOG",
+    "PERF",
+    "PIE",
+    "PT",
+    "PYI",
+    "Q",
+    "RET",
+    "RSE",
+    "S",
+    "SIM",
+    "SLF",
+    "SLOT",
+    "T10",
+    "TCH",
+    "TD",
+    "TID",
+    "ASYNC1",
+    "UP",
+    "W",
+    "YTT",
+    "ANN",
+    "N",
+    "G",
+    "PL",
+    "TRY",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+indent-style = "space"
+line-ending = "auto"
+
+[tool.pylsp-mypy]
+enabled = true
+live_mode = true
+strict = false
+exclude = []
+
+[build-system]
+requires = [
+    "poetry-core",
+]
+build-backend = "poetry.core.masonry.api"
+
