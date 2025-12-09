@@ -140,15 +140,13 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         self.file_label = Gtk.Label(label="No file loaded")
         self.file_label.set_halign(Gtk.Align.START)
-        file_row = Adw.ActionRow()
-        file_row.set_title("Audio File")
+        file_row = Adw.ActionRow(title="Audio File")
         file_row.add_suffix(self.file_label)
         file_group.add(file_row)
 
         self.sfz_label = Gtk.Label(label="No SFZ loaded")
         self.sfz_label.set_halign(Gtk.Align.START)
-        sfz_row = Adw.ActionRow()
-        sfz_row.set_title("SFZ File")
+        sfz_row = Adw.ActionRow(title="SFZ File")
         sfz_row.add_suffix(self.sfz_label)
         file_group.add(sfz_row)
 
@@ -188,35 +186,27 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.zero_crossing_check.set_tooltip_text("Snap loop points to the nearest zero-crossing to prevent clicks")
         self.zero_crossing_check.set_active(True)
         self.zero_crossing_check.connect("toggled", self.on_zero_crossing_toggled)
-        
-        zero_crossing_row = Adw.ActionRow()
-        zero_crossing_row.set_title("Snapping")
+
+        zero_crossing_row = Adw.ActionRow(title="Snapping")
         zero_crossing_row.add_suffix(self.zero_crossing_check)
         loop_group.add(zero_crossing_row)
 
-        # Loop mode dropdown - use StringList for GTK4
         self.loop_strings = Gtk.StringList.new(
             ["no_loop", "one_shot", "loop_sustain", "loop_continuous"]
         )
-
-        self.loop_mode = Gtk.DropDown(model=self.loop_strings)
-        self.loop_mode.set_tooltip_text("Set the loop mode for the sample")
+        self.loop_mode = Gtk.DropDown(model=self.loop_strings, tooltip_text="Set the loop mode for the sample")
         self.loop_mode.set_selected(0)
         self.loop_mode.connect("notify::selected", self.on_loop_mode_changed)
 
-        loop_row = Adw.ActionRow()
-        loop_row.set_title("Loop Mode")
+        loop_row = Adw.ActionRow(title="Loop Mode")
         loop_row.add_suffix(self.loop_mode)
         loop_group.add(loop_row)
 
-        # Loop markers (initially insensitive)
         self.loop_start_spin = Gtk.SpinButton.new_with_range(0, 100, 1)
         self.loop_start_spin.set_tooltip_text("Set the start point of the loop in samples")
         self.loop_start_spin.set_sensitive(False)
         self.loop_start_spin.connect("value-changed", self.on_loop_marker_changed)
-
-        loop_start_row = Adw.ActionRow()
-        loop_start_row.set_title("Loop Start (samples)")
+        loop_start_row = Adw.ActionRow(title="Loop Start (samples)")
         loop_start_row.add_suffix(self.loop_start_spin)
         loop_group.add(loop_start_row)
 
@@ -224,203 +214,56 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.loop_end_spin.set_tooltip_text("Set the end point of the loop in samples")
         self.loop_end_spin.set_sensitive(False)
         self.loop_end_spin.connect("value-changed", self.on_loop_marker_changed)
-
-        loop_end_row = Adw.ActionRow()
-        loop_end_row.set_title("Loop End (samples)")
+        loop_end_row = Adw.ActionRow(title="Loop End (samples)")
         loop_end_row.add_suffix(self.loop_end_spin)
         loop_group.add(loop_end_row)
 
-        # Loop crossfade
-        self.loop_crossfade_switch = Gtk.Switch()
-        self.loop_crossfade_switch.set_active(False)
-        self.loop_crossfade_switch.connect("notify::active", self.update_sfz_output)
-
-        self.loop_crossfade_scale = Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL, 0, 1, 0.001
-        )
-        self.loop_crossfade_scale.set_value(0.05)
-        self.loop_crossfade_scale.set_sensitive(False)
-        self.loop_crossfade_scale.set_draw_value(True)
-        self.loop_crossfade_scale.set_value_pos(Gtk.PositionType.RIGHT)
-        self.loop_crossfade_scale.set_tooltip_text(
-            "Set the crossfade length in seconds for the loop"
-        )
-        self.loop_crossfade_scale.connect("value-changed", self.update_sfz_output)
-
-        loop_crossfade_row = Adw.ActionRow()
-        loop_crossfade_row.set_title("Loop Crossfade (seconds)")
-        loop_crossfade_row.set_tooltip_text(
-            "Enable and set the loop crossfade length in seconds (loop_crossfade)"
-        )
-        loop_crossfade_row.add_suffix(self.loop_crossfade_switch)
-        loop_crossfade_row.add_suffix(self.loop_crossfade_scale)
-        loop_group.add(loop_crossfade_row)
-
-        self.loop_crossfade_switch.connect(
-            "notify::active",
-            lambda s, p: self.loop_crossfade_scale.set_sensitive(s.get_active()),
-        )
+        self.loop_crossfade_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
+        self.loop_crossfade_spin_row.set_title("Loop Crossfade (s)")
+        self.loop_crossfade_spin_row.set_value(0)
+        self.loop_crossfade_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
+        loop_group.add(self.loop_crossfade_spin_row)
 
         # ADSR group
         adsr_group = Adw.PreferencesGroup()
         adsr_group.set_title("Envelope (ADSR)")
         self.left_panel.append(adsr_group)
 
-        # Delay
-        self.delay_switch = Gtk.Switch()
-        self.delay_switch.set_active(False)
-        self.delay_switch.connect("notify::active", self.update_sfz_output)
+        self.delay_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
+        self.delay_spin_row.set_title("Delay (s)")
+        self.delay_spin_row.set_value(0)
+        self.delay_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
+        adsr_group.add(self.delay_spin_row)
 
-        self.delay_scale = Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL, 0, 10, 0.01
-        )
-        self.delay_scale.set_value(0)
-        self.delay_scale.set_sensitive(False)
-        self.delay_scale.set_draw_value(True)
-        self.delay_scale.set_value_pos(Gtk.PositionType.RIGHT)
-        self.delay_scale.connect("value-changed", self.update_sfz_output)
+        self.attack_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
+        self.attack_spin_row.set_title("Attack (s)")
+        self.attack_spin_row.set_value(0)
+        self.attack_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
+        adsr_group.add(self.attack_spin_row)
 
-        delay_row = Adw.ActionRow()
-        delay_row.set_title("Delay")
-        delay_row.set_tooltip_text("Enable and set the initial delay before the envelope starts (ampeg_delay)")
-        delay_row.add_suffix(self.delay_switch)
-        delay_row.add_suffix(self.delay_scale)
-        adsr_group.add(delay_row)
+        self.hold_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
+        self.hold_spin_row.set_title("Hold (s)")
+        self.hold_spin_row.set_value(0)
+        self.hold_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
+        adsr_group.add(self.hold_spin_row)
 
-        self.delay_switch.connect(
-            "notify::active",
-            lambda s, p: self.delay_scale.set_sensitive(s.get_active()),
-        )
+        self.decay_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
+        self.decay_spin_row.set_title("Decay (s)")
+        self.decay_spin_row.set_value(0)
+        self.decay_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
+        adsr_group.add(self.decay_spin_row)
 
-        # Attack
-        self.attack_switch = Gtk.Switch()
-        self.attack_switch.set_active(False)
-        self.attack_switch.connect("notify::active", self.update_sfz_output)
+        self.sustain_spin_row = Adw.SpinRow.new_with_range(0, 100, 1)
+        self.sustain_spin_row.set_title("Sustain (%)")
+        self.sustain_spin_row.set_value(100)
+        self.sustain_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
+        adsr_group.add(self.sustain_spin_row)
 
-        self.attack_scale = Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL, 0, 5, 0.01
-        )
-        self.attack_scale.set_value(0.01)
-        self.attack_scale.set_sensitive(False)
-        self.attack_scale.set_draw_value(True)
-        self.attack_scale.set_value_pos(Gtk.PositionType.RIGHT)
-        self.attack_scale.connect("value-changed", self.update_sfz_output)
-
-        attack_row = Adw.ActionRow()
-        attack_row.set_title("Attack")
-        attack_row.set_tooltip_text("Enable and set the attack time (ampeg_attack)")
-        attack_row.add_suffix(self.attack_switch)
-        attack_row.add_suffix(self.attack_scale)
-        adsr_group.add(attack_row)
-
-        self.attack_switch.connect(
-            "notify::active",
-            lambda s, p: self.attack_scale.set_sensitive(s.get_active()),
-        )
-
-        # Hold
-        self.hold_switch = Gtk.Switch()
-        self.hold_switch.set_active(False)
-        self.hold_switch.connect("notify::active", self.update_sfz_output)
-
-        self.hold_scale = Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL, 0, 10, 0.01
-        )
-        self.hold_scale.set_value(0)
-        self.hold_scale.set_sensitive(False)
-        self.hold_scale.set_draw_value(True)
-        self.hold_scale.set_value_pos(Gtk.PositionType.RIGHT)
-        self.hold_scale.connect("value-changed", self.update_sfz_output)
-
-        hold_row = Adw.ActionRow()
-        hold_row.set_title("Hold")
-        hold_row.set_tooltip_text("Enable and set the hold time (ampeg_hold)")
-        hold_row.add_suffix(self.hold_switch)
-        hold_row.add_suffix(self.hold_scale)
-        adsr_group.add(hold_row)
-
-        self.hold_switch.connect(
-            "notify::active",
-            lambda s, p: self.hold_scale.set_sensitive(s.get_active()),
-        )
-
-        # Decay
-        self.decay_switch = Gtk.Switch()
-        self.decay_switch.set_active(False)
-        self.decay_switch.connect("notify::active", self.update_sfz_output)
-
-        self.decay_scale = Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL, 0, 10, 0.01
-        )
-        self.decay_scale.set_value(1)
-        self.decay_scale.set_sensitive(False)
-        self.decay_scale.set_draw_value(True)
-        self.decay_scale.set_value_pos(Gtk.PositionType.RIGHT)
-        self.decay_scale.connect("value-changed", self.update_sfz_output)
-
-        decay_row = Adw.ActionRow()
-        decay_row.set_title("Decay")
-        decay_row.set_tooltip_text("Enable and set the decay time (ampeg_decay)")
-        decay_row.add_suffix(self.decay_switch)
-        decay_row.add_suffix(self.decay_scale)
-        adsr_group.add(decay_row)
-
-        self.decay_switch.connect(
-            "notify::active",
-            lambda s, p: self.decay_scale.set_sensitive(s.get_active()),
-        )
-
-        # Sustain
-        self.sustain_switch = Gtk.Switch()
-        self.sustain_switch.set_active(False)
-        self.sustain_switch.connect("notify::active", self.update_sfz_output)
-
-        self.sustain_scale = Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL, 0, 1, 0.01
-        )
-        self.sustain_scale.set_value(0.7)
-        self.sustain_scale.set_sensitive(False)
-        self.sustain_scale.set_draw_value(True)
-        self.sustain_scale.set_value_pos(Gtk.PositionType.RIGHT)
-        self.sustain_scale.connect("value-changed", self.update_sfz_output)
-
-        sustain_row = Adw.ActionRow()
-        sustain_row.set_title("Sustain")
-        sustain_row.set_tooltip_text("Enable and set the sustain level (ampeg_sustain)")
-        sustain_row.add_suffix(self.sustain_switch)
-        sustain_row.add_suffix(self.sustain_scale)
-        adsr_group.add(sustain_row)
-
-        self.sustain_switch.connect(
-            "notify::active",
-            lambda s, p: self.sustain_scale.set_sensitive(s.get_active()),
-        )
-
-        # Release
-        self.release_switch = Gtk.Switch()
-        self.release_switch.set_active(False)
-        self.release_switch.connect("notify::active", self.update_sfz_output)
-
-        self.release_scale = Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL, 0, 10, 0.01
-        )
-        self.release_scale.set_value(0.1)
-        self.release_scale.set_sensitive(False)
-        self.release_scale.set_draw_value(True)
-        self.release_scale.set_value_pos(Gtk.PositionType.RIGHT)
-        self.release_scale.connect("value-changed", self.update_sfz_output)
-
-        release_row = Adw.ActionRow()
-        release_row.set_title("Release")
-        release_row.set_tooltip_text("Enable and set the release time (ampeg_release)")
-        release_row.add_suffix(self.release_switch)
-        release_row.add_suffix(self.release_scale)
-        adsr_group.add(release_row)
-
-        self.release_switch.connect(
-            "notify::active",
-            lambda s, p: self.release_scale.set_sensitive(s.get_active()),
-        )
+        self.release_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
+        self.release_spin_row.set_title("Release (s)")
+        self.release_spin_row.set_value(0)
+        self.release_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
+        adsr_group.add(self.release_spin_row)
 
         self.envelope_widget = EnvelopeWidget()
         adsr_group.add(self.envelope_widget)
@@ -436,8 +279,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.pitch_keycenter.set_tooltip_text("The MIDI note at which the sample plays back at its original pitch")
         self.pitch_keycenter.connect("value-changed", self.update_sfz_output)
 
-        pitch_row = Adw.ActionRow()
-        pitch_row.set_title("Pitch Keycenter (MIDI note)")
+        pitch_row = Adw.ActionRow(title="Pitch Keycenter")
         pitch_row.add_suffix(self.pitch_keycenter)
         pitch_group.add(pitch_row)
 
@@ -450,8 +292,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.pitch_shift_check.set_active(False)
         self.pitch_shift_check.connect("toggled", self.on_pitch_shift_toggled)
 
-        gen_row = Adw.ActionRow()
-        gen_row.set_title("Advanced Generation")
+        gen_row = Adw.ActionRow(title="Advanced Generation")
         gen_row.add_suffix(self.pitch_shift_check)
         gen_group.add(gen_row)
 
@@ -461,8 +302,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.low_key_spin.set_tooltip_text("The lowest MIDI note to generate a sample for")
         self.low_key_spin.set_sensitive(False)
 
-        self.low_key_row = Adw.ActionRow()
-        self.low_key_row.set_title("Low Key")
+        self.low_key_row = Adw.ActionRow(title="Low Key")
         self.low_key_row.add_suffix(self.low_key_spin)
         self.low_key_row.set_visible(False)
         gen_group.add(self.low_key_row)
@@ -473,8 +313,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.high_key_spin.set_tooltip_text("The highest MIDI note to generate a sample for")
         self.high_key_spin.set_sensitive(False)
 
-        self.high_key_row = Adw.ActionRow()
-        self.high_key_row.set_title("High Key")
+        self.high_key_row = Adw.ActionRow(title="High Key")
         self.high_key_row.add_suffix(self.high_key_spin)
         self.high_key_row.set_visible(False)
         gen_group.add(self.high_key_row)
@@ -743,22 +582,13 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.loop_start_spin.handler_block_by_func(self.on_loop_marker_changed)
         self.loop_end_spin.handler_block_by_func(self.on_loop_marker_changed)
         self.pitch_keycenter.handler_block_by_func(self.update_sfz_output)
-        self.loop_crossfade_switch.handler_block_by_func(self.update_sfz_output)
-        self.loop_crossfade_scale.handler_block_by_func(self.update_sfz_output)
-        
-        # Block ADSR signals
-        self.delay_switch.handler_block_by_func(self.update_sfz_output)
-        self.delay_scale.handler_block_by_func(self.update_sfz_output)
-        self.attack_switch.handler_block_by_func(self.update_sfz_output)
-        self.attack_scale.handler_block_by_func(self.update_sfz_output)
-        self.hold_switch.handler_block_by_func(self.update_sfz_output)
-        self.hold_scale.handler_block_by_func(self.update_sfz_output)
-        self.decay_switch.handler_block_by_func(self.update_sfz_output)
-        self.decay_scale.handler_block_by_func(self.update_sfz_output)
-        self.sustain_switch.handler_block_by_func(self.update_sfz_output)
-        self.sustain_scale.handler_block_by_func(self.update_sfz_output)
-        self.release_switch.handler_block_by_func(self.update_sfz_output)
-        self.release_scale.handler_block_by_func(self.update_sfz_output)
+        self.loop_crossfade_spin_row.get_adjustment().handler_block_by_func(self.update_sfz_output)
+        self.delay_spin_row.get_adjustment().handler_block_by_func(self.update_sfz_output)
+        self.attack_spin_row.get_adjustment().handler_block_by_func(self.update_sfz_output)
+        self.hold_spin_row.get_adjustment().handler_block_by_func(self.update_sfz_output)
+        self.decay_spin_row.get_adjustment().handler_block_by_func(self.update_sfz_output)
+        self.sustain_spin_row.get_adjustment().handler_block_by_func(self.update_sfz_output)
+        self.release_spin_row.get_adjustment().handler_block_by_func(self.update_sfz_output)
 
         try:
             # Loop mode
@@ -786,62 +616,26 @@ class SFZGenerator(Adw.ApplicationWindow):
                 self.waveform_widget.set_loop_points(self.loop_start, self.loop_end)
 
             if "loop_crossfade" in sfz_data:
-                crossfade_val_str = sfz_data["loop_crossfade"]
-                crossfade_seconds = 0
-                try:
-                    if "." in crossfade_val_str:
-                        # Value is in seconds
-                        crossfade_seconds = float(crossfade_val_str)
-                    elif self.sample_rate and self.sample_rate > 0:
-                        # Value is in samples, convert to seconds
-                        crossfade_seconds = float(crossfade_val_str)
-                except ValueError:
-                    crossfade_seconds = 0  # Could not parse
-
-                if crossfade_seconds > 0:
-                    self.loop_crossfade_scale.set_value(crossfade_seconds)
-                    self.loop_crossfade_switch.set_active(True)
-                else:
-                    self.loop_crossfade_switch.set_active(False)
-            else:
-                self.loop_crossfade_switch.set_active(False)
+                self.loop_crossfade_spin_row.set_value(float(sfz_data["loop_crossfade"]))
 
             # ADSR
             if "ampeg_delay" in sfz_data:
-                self.delay_switch.set_active(True)
-                self.delay_scale.set_value(float(sfz_data["ampeg_delay"]))
-            else:
-                self.delay_switch.set_active(False)
-                
+                self.delay_spin_row.set_value(float(sfz_data["ampeg_delay"]))
+
             if "ampeg_attack" in sfz_data:
-                self.attack_switch.set_active(True)
-                self.attack_scale.set_value(float(sfz_data["ampeg_attack"]))
-            else:
-                self.attack_switch.set_active(False)
+                self.attack_spin_row.set_value(float(sfz_data["ampeg_attack"]))
 
             if "ampeg_hold" in sfz_data:
-                self.hold_switch.set_active(True)
-                self.hold_scale.set_value(float(sfz_data["ampeg_hold"]))
-            else:
-                self.hold_switch.set_active(False)
+                self.hold_spin_row.set_value(float(sfz_data["ampeg_hold"]))
 
             if "ampeg_decay" in sfz_data:
-                self.decay_switch.set_active(True)
-                self.decay_scale.set_value(float(sfz_data["ampeg_decay"]))
-            else:
-                self.decay_switch.set_active(False)
+                self.decay_spin_row.set_value(float(sfz_data["ampeg_decay"]))
 
             if "ampeg_sustain" in sfz_data:
-                self.sustain_switch.set_active(True)
-                self.sustain_scale.set_value(float(sfz_data["ampeg_sustain"]) / 100.0)
-            else:
-                self.sustain_switch.set_active(False)
+                self.sustain_spin_row.set_value(float(sfz_data["ampeg_sustain"]))
 
             if "ampeg_release" in sfz_data:
-                self.release_switch.set_active(True)
-                self.release_scale.set_value(float(sfz_data["ampeg_release"]))
-            else:
-                self.release_switch.set_active(False)
+                self.release_spin_row.set_value(float(sfz_data["ampeg_release"]))
 
             # Pitch keycenter
             if "pitch_keycenter" in sfz_data:
@@ -856,22 +650,14 @@ class SFZGenerator(Adw.ApplicationWindow):
             self.loop_start_spin.handler_unblock_by_func(self.on_loop_marker_changed)
             self.loop_end_spin.handler_unblock_by_func(self.on_loop_marker_changed)
             self.pitch_keycenter.handler_unblock_by_func(self.update_sfz_output)
-            self.loop_crossfade_switch.handler_unblock_by_func(self.update_sfz_output)
-            self.loop_crossfade_scale.handler_unblock_by_func(self.update_sfz_output)
+            self.loop_crossfade_spin_row.get_adjustment().handler_unblock_by_func(self.update_sfz_output)
+            self.delay_spin_row.get_adjustment().handler_unblock_by_func(self.update_sfz_output)
+            self.attack_spin_row.get_adjustment().handler_unblock_by_func(self.update_sfz_output)
+            self.hold_spin_row.get_adjustment().handler_unblock_by_func(self.update_sfz_output)
+            self.decay_spin_row.get_adjustment().handler_unblock_by_func(self.update_sfz_output)
+            self.sustain_spin_row.get_adjustment().handler_unblock_by_func(self.update_sfz_output)
+            self.release_spin_row.get_adjustment().handler_unblock_by_func(self.update_sfz_output)
 
-            # Unblock ADSR signals
-            self.delay_switch.handler_unblock_by_func(self.update_sfz_output)
-            self.delay_scale.handler_unblock_by_func(self.update_sfz_output)
-            self.attack_switch.handler_unblock_by_func(self.update_sfz_output)
-            self.attack_scale.handler_unblock_by_func(self.update_sfz_output)
-            self.hold_switch.handler_unblock_by_func(self.update_sfz_output)
-            self.hold_scale.handler_unblock_by_func(self.update_sfz_output)
-            self.decay_switch.handler_unblock_by_func(self.update_sfz_output)
-            self.decay_scale.handler_unblock_by_func(self.update_sfz_output)
-            self.sustain_switch.handler_unblock_by_func(self.update_sfz_output)
-            self.sustain_scale.handler_unblock_by_func(self.update_sfz_output)
-            self.release_switch.handler_unblock_by_func(self.update_sfz_output)
-            self.release_scale.handler_unblock_by_func(self.update_sfz_output)
 
         # Update SFZ output
         self.update_sfz_output()
@@ -1009,11 +795,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         is_looping = loop_mode in ["loop_sustain", "loop_continuous"]
         self.loop_start_spin.set_sensitive(is_looping)
         self.loop_end_spin.set_sensitive(is_looping)
-        self.loop_crossfade_switch.set_sensitive(is_looping)
-        self.loop_crossfade_scale.set_sensitive(
-            is_looping and self.loop_crossfade_switch.get_active()
-        )
-
+        self.loop_crossfade_spin_row.set_sensitive(is_looping)
 
         self.update_sfz_output()
 
@@ -1060,23 +842,25 @@ class SFZGenerator(Adw.ApplicationWindow):
                     parts.append(f"loop_start={int(self.loop_start)}")
                 if self.loop_end is not None:
                     parts.append(f"loop_end={int(self.loop_end)}")
-                if self.loop_crossfade_switch.get_active() and self.sample_rate:
-                    crossfade_samples = float( self.loop_crossfade_scale.get_value())
-                    parts.append(f"loop_crossfade={crossfade_samples}")
+                if self.sample_rate:
+                    crossfade_value = self.loop_crossfade_spin_row.get_value()
+                    if crossfade_value > 0:
+                        crossfade_samples = int(crossfade_value * self.sample_rate)
+                        parts.append(f"loop_crossfade={crossfade_samples}")
 
-        if self.delay_switch.get_active():
-            parts.append(f"ampeg_delay={self.delay_scale.get_value():.3f}")
-        if self.attack_switch.get_active():
-            parts.append(f"ampeg_attack={self.attack_scale.get_value():.3f}")
-        if self.hold_switch.get_active():
-            parts.append(f"ampeg_hold={self.hold_scale.get_value():.3f}")
-        if self.decay_switch.get_active():
-            parts.append(f"ampeg_decay={self.decay_scale.get_value():.3f}")
-        if self.sustain_switch.get_active():
-            parts.append(f"ampeg_sustain={int(self.sustain_scale.get_value() * 100)}")
-        if self.release_switch.get_active():
-            parts.append(f"ampeg_release={self.release_scale.get_value():.3f}")
-            
+        if self.delay_spin_row.get_value() > 0:
+            parts.append(f"ampeg_delay={self.delay_spin_row.get_value():.3f}")
+        if self.attack_spin_row.get_value() > 0:
+            parts.append(f"ampeg_attack={self.attack_spin_row.get_value():.3f}")
+        if self.hold_spin_row.get_value() > 0:
+            parts.append(f"ampeg_hold={self.hold_spin_row.get_value():.3f}")
+        if self.decay_spin_row.get_value() > 0:
+            parts.append(f"ampeg_decay={self.decay_spin_row.get_value():.3f}")
+        if self.sustain_spin_row.get_value() < 100:
+            parts.append(f"ampeg_sustain={int(self.sustain_spin_row.get_value())}")
+        if self.release_spin_row.get_value() > 0:
+            parts.append(f"ampeg_release={self.release_spin_row.get_value():.3f}")
+
         if parts:
             return " " + " ".join(parts)
         return ""
@@ -1122,18 +906,12 @@ class SFZGenerator(Adw.ApplicationWindow):
             return
 
         adsr_params = {
-            "delay": self.delay_scale.get_value(),
-            "delay_enabled": self.delay_switch.get_active(),
-            "attack": self.attack_scale.get_value(),
-            "attack_enabled": self.attack_switch.get_active(),
-            "hold": self.hold_scale.get_value(),
-            "hold_enabled": self.hold_switch.get_active(),
-            "decay": self.decay_scale.get_value(),
-            "decay_enabled": self.decay_switch.get_active(),
-            "sustain": self.sustain_scale.get_value(),
-            "sustain_enabled": self.sustain_switch.get_active(),
-            "release": self.release_scale.get_value(),
-            "release_enabled": self.release_switch.get_active(),
+            "delay": self.delay_spin_row.get_value(),
+            "attack": self.attack_spin_row.get_value(),
+            "hold": self.hold_spin_row.get_value(),
+            "decay": self.decay_spin_row.get_value(),
+            "sustain": self.sustain_spin_row.get_value() / 100.0,
+            "release": self.release_spin_row.get_value(),
         }
         self.envelope_widget.set_adsr_values(**adsr_params)
 
@@ -1204,3 +982,4 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         dialog.connect("response", on_save_response)
         dialog.show()
+
