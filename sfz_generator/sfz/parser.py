@@ -48,17 +48,18 @@ def parse_sfz_content(content):
 
         # Check for section headers
         if line.startswith("<") and line.endswith(">"):
-            current_section = line[1:-1]
+            current_section = line[1:-1].lower()
             continue
 
-        # Parse opcode=value pairs
-        if "=" in line:
-            opcode, value = line.split("=", 1)
-            opcode = opcode.strip().lower()
-            value = value.strip()
-
-            # Store only the first region's opcodes
-            if current_section == "region":
-                sfz_data[opcode] = value
+        if current_section not in ["group", "region"]:
+            continue
+        
+        # Replace multiple spaces with one, to help splitting
+        line = re.sub(r'\s+', ' ', line).strip()
+        parts = line.split(' ')
+        for part in parts:
+            if '=' in part:
+                opcode, value = part.split('=', 1)
+                sfz_data[opcode.lower().strip()] = value.strip()
 
     return sfz_data

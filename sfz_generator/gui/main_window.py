@@ -13,15 +13,12 @@ import threading
 import sounddevice as sd
 import re
 
-from sfz_generator.widgets.waveform_widget import WaveformWidget
-from sfz_generator.utils import midi_to_name
-from sfz_generator.audio.processing import process_midi_note, load_audio
 from sfz_generator.audio.player import play
-from sfz_generator.sfz.parser import parse_sfz_file
+from sfz_generator.audio.processing import load_audio
 from sfz_generator.sfz.generator import generate_pitch_shifted_instrument, get_simple_sfz_content
-import librosa
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
+from sfz_generator.sfz.parser import parse_sfz_file
+from sfz_generator.widgets.envelope_widget import EnvelopeWidget
+from sfz_generator.widgets.waveform_widget import WaveformWidget
 
 
 class SFZGenerator(Adw.ApplicationWindow):
@@ -425,6 +422,9 @@ class SFZGenerator(Adw.ApplicationWindow):
             lambda s, p: self.release_scale.set_sensitive(s.get_active()),
         )
 
+        self.envelope_widget = EnvelopeWidget()
+        adsr_group.add(self.envelope_widget)
+
         # Pitch group
         pitch_group = Adw.PreferencesGroup()
         pitch_group.set_title("Pitch Settings")
@@ -743,6 +743,20 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.pitch_keycenter.handler_block_by_func(self.update_sfz_output)
         self.loop_crossfade_switch.handler_block_by_func(self.update_sfz_output)
         self.loop_crossfade_scale.handler_block_by_func(self.update_sfz_output)
+        
+        # Block ADSR signals
+        self.delay_switch.handler_block_by_func(self.update_sfz_output)
+        self.delay_scale.handler_block_by_func(self.update_sfz_output)
+        self.attack_switch.handler_block_by_func(self.update_sfz_output)
+        self.attack_scale.handler_block_by_func(self.update_sfz_output)
+        self.hold_switch.handler_block_by_func(self.update_sfz_output)
+        self.hold_scale.handler_block_by_func(self.update_sfz_output)
+        self.decay_switch.handler_block_by_func(self.update_sfz_output)
+        self.decay_scale.handler_block_by_func(self.update_sfz_output)
+        self.sustain_switch.handler_block_by_func(self.update_sfz_output)
+        self.sustain_scale.handler_block_by_func(self.update_sfz_output)
+        self.release_switch.handler_block_by_func(self.update_sfz_output)
+        self.release_scale.handler_block_by_func(self.update_sfz_output)
 
         try:
             # Loop mode
@@ -766,11 +780,23 @@ class SFZGenerator(Adw.ApplicationWindow):
                 self.loop_end = int(sfz_data["loop_end"])
                 self.loop_end_spin.set_value(self.loop_end)
 
+            if self.loop_start is not None and self.loop_end is not None:
+                self.waveform_widget.set_loop_points(self.loop_start, self.loop_end)
+
             if "loop_crossfade" in sfz_data:
-                if self.sample_rate and self.sample_rate > 0:
-                    crossfade_seconds = (
-                        int(sfz_data["loop_crossfade"]) / self.sample_rate
-                    )
+                crossfade_val_str = sfz_data["loop_crossfade"]
+                crossfade_seconds = 0
+                try:
+                    if "." in crossfade_val_str:
+                        # Value is in seconds
+                        crossfade_seconds = float(crossfade_val_str)
+                    elif self.sample_rate and self.sample_rate > 0:
+                        # Value is in samples, convert to seconds
+                        crossfade_seconds = float(crossfade_val_str)
+                except ValueError:
+                    crossfade_seconds = 0  # Could not parse
+
+                if crossfade_seconds > 0:
                     self.loop_crossfade_scale.set_value(crossfade_seconds)
                     self.loop_crossfade_switch.set_active(True)
                 else:
@@ -779,15 +805,33 @@ class SFZGenerator(Adw.ApplicationWindow):
                 self.loop_crossfade_switch.set_active(False)
 
             # ADSR
+            if "ampeg_delay" in sfz_data:
+                self.delay_switch.set_active(True)
+                self.delay_scale.set_value(float(sfz_data["ampeg_delay"]))
+            else:
+                self.delay_switch.set_active(False)
+                
             if "ampeg_attack" in sfz_data:
                 self.attack_switch.set_active(True)
                 self.attack_scale.set_value(float(sfz_data["ampeg_attack"]))
             else:
                 self.attack_switch.set_active(False)
 
+            if "ampeg_hold" in sfz_data:
+                self.hold_switch.set_active(True)
+                self.hold_scale.set_value(float(sfz_data["ampeg_hold"]))
+            else:
+                self.hold_switch.set_active(False)
+
+            if "ampeg_decay" in sfz_data:
+                self.decay_switch.set_active(True)
+                self.decay_scale.set_value(float(sfz_data["ampeg_decay"]))
+            else:
+                self.decay_switch.set_active(False)
+
             if "ampeg_sustain" in sfz_data:
                 self.sustain_switch.set_active(True)
-                self.sustain_scale.set_value(float(sfz_data["ampeg_sustain"]))
+                self.sustain_scale.set_value(float(sfz_data["ampeg_sustain"]) / 100.0)
             else:
                 self.sustain_switch.set_active(False)
 
@@ -812,6 +856,20 @@ class SFZGenerator(Adw.ApplicationWindow):
             self.pitch_keycenter.handler_unblock_by_func(self.update_sfz_output)
             self.loop_crossfade_switch.handler_unblock_by_func(self.update_sfz_output)
             self.loop_crossfade_scale.handler_unblock_by_func(self.update_sfz_output)
+
+            # Unblock ADSR signals
+            self.delay_switch.handler_unblock_by_func(self.update_sfz_output)
+            self.delay_scale.handler_unblock_by_func(self.update_sfz_output)
+            self.attack_switch.handler_unblock_by_func(self.update_sfz_output)
+            self.attack_scale.handler_unblock_by_func(self.update_sfz_output)
+            self.hold_switch.handler_unblock_by_func(self.update_sfz_output)
+            self.hold_scale.handler_unblock_by_func(self.update_sfz_output)
+            self.decay_switch.handler_unblock_by_func(self.update_sfz_output)
+            self.decay_scale.handler_unblock_by_func(self.update_sfz_output)
+            self.sustain_switch.handler_unblock_by_func(self.update_sfz_output)
+            self.sustain_scale.handler_unblock_by_func(self.update_sfz_output)
+            self.release_switch.handler_unblock_by_func(self.update_sfz_output)
+            self.release_scale.handler_unblock_by_func(self.update_sfz_output)
 
         # Update SFZ output
         self.update_sfz_output()
@@ -1001,9 +1059,7 @@ class SFZGenerator(Adw.ApplicationWindow):
                 if self.loop_end is not None:
                     parts.append(f"loop_end={int(self.loop_end)}")
                 if self.loop_crossfade_switch.get_active() and self.sample_rate:
-                    crossfade_samples = int(
-                        self.loop_crossfade_scale.get_value() * self.sample_rate
-                    )
+                    crossfade_samples = float( self.loop_crossfade_scale.get_value())
                     parts.append(f"loop_crossfade={crossfade_samples}")
 
         if self.delay_switch.get_active():
@@ -1059,7 +1115,28 @@ class SFZGenerator(Adw.ApplicationWindow):
         thread.daemon = True
         thread.start()
 
+    def update_envelope_preview(self):
+        if not hasattr(self, "envelope_widget"):
+            return
+
+        adsr_params = {
+            "delay": self.delay_scale.get_value(),
+            "delay_enabled": self.delay_switch.get_active(),
+            "attack": self.attack_scale.get_value(),
+            "attack_enabled": self.attack_switch.get_active(),
+            "hold": self.hold_scale.get_value(),
+            "hold_enabled": self.hold_switch.get_active(),
+            "decay": self.decay_scale.get_value(),
+            "decay_enabled": self.decay_switch.get_active(),
+            "sustain": self.sustain_scale.get_value(),
+            "sustain_enabled": self.sustain_switch.get_active(),
+            "release": self.release_scale.get_value(),
+            "release_enabled": self.release_switch.get_active(),
+        }
+        self.envelope_widget.set_adsr_values(**adsr_params)
+
     def update_sfz_output(self, *args):
+        self.update_envelope_preview()
         if self.pitch_shift_check.get_active():
             self.sfz_buffer.set_text(
                 "// Pitch-shifting is enabled.\n"
