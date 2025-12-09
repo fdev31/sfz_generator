@@ -1,7 +1,7 @@
 # Maintainer: Fabien Devaux <fdev31@gmail.com>
 # Contributor: Fabien Devaux <fdev31@gmail.com>
 pkgname=sfz_generator
-pkgver=r9.aa1a282
+pkgver=r10.6181e56
 pkgrel=1
 pkgdesc="Straightforward GUI to create SFZ files from a single sample"
 arch=(any)
