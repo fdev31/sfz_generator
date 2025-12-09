@@ -820,7 +820,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.high_key_row.set_visible(is_active)
         self.update_sfz_output()
 
-    def get_extra_sfz_definitions(self):
+    def get_extra_sfz_definitions(self) -> list[str]:
         parts = []
         selected = self.loop_mode.get_selected()
         loop_mode = self.loop_strings.get_string(selected)
@@ -835,8 +835,7 @@ class SFZGenerator(Adw.ApplicationWindow):
                 if self.sample_rate:
                     crossfade_value = self.loop_crossfade_spin_row.get_value()
                     if crossfade_value > 0:
-                        crossfade_samples = int(crossfade_value * self.sample_rate)
-                        parts.append(f"loop_crossfade={crossfade_samples}")
+                        parts.append(f"loop_crossfade={crossfade_value}")
 
         if self.delay_spin_row.get_value() > 0:
             parts.append(f"ampeg_delay={self.delay_spin_row.get_value():.3f}")
@@ -852,8 +851,8 @@ class SFZGenerator(Adw.ApplicationWindow):
             parts.append(f"ampeg_release={self.release_spin_row.get_value():.3f}")
 
         if parts:
-            return " " + " ".join(parts)
-        return ""
+            return parts
+        return []
 
     def show_generation_complete_dialog(self, sfz_path, num_successful, num_total):
         if num_successful == 0:
@@ -880,7 +879,7 @@ class SFZGenerator(Adw.ApplicationWindow):
                 int(self.low_key_spin.get_value()),
                 int(self.high_key_spin.get_value()),
                 self.sample_rate,
-                self.get_extra_sfz_definitions
+                self.get_extra_sfz_definitions()
             )
 
             GLib.idle_add(self.show_generation_complete_dialog, sfz_path, num_successful, num_total)
@@ -918,7 +917,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         content = get_simple_sfz_content(
             self.audio_file_path,
             self.pitch_keycenter.get_value(),
-            self.get_extra_sfz_definitions
+            self.get_extra_sfz_definitions()
         )
         self.sfz_buffer.set_text(content)
 

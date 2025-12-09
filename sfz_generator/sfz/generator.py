@@ -2,9 +2,11 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from sfz_generator.audio.processing import process_midi_note
 
-def generate_pitch_shifted_instrument(output_dir, audio_file_path, pitch_keycenter, low_key, high_key, sample_rate, extra_definitions_func):
-    """
-    Generates a pitch-shifted SFZ instrument.
+
+def generate_pitch_shifted_instrument(
+    output_dir, audio_file_path, pitch_keycenter, low_key, high_key, sample_rate, extra_definitions: list[str]
+):
+    """Generates a pitch-shifted SFZ instrument.
     """
     try:
         samples_dir_name = "samples"
@@ -29,18 +31,15 @@ def generate_pitch_shifted_instrument(output_dir, audio_file_path, pitch_keycent
         if not successful_notes:
             return None, 0, num_total
 
-        sfz_lines = ["<group>"]
-        extra_definitions = extra_definitions_func()
+        sfz_lines = ["<global>"] +  extra_definitions + [ "<group>"]
 
         for midi, note_name in successful_notes:
             out_wav = f"{note_name}.wav"
             sample_path = os.path.join(samples_dir_name, out_wav)
-            sfz_lines.append(
-                f"<region> sample={sample_path} key={midi} pitch_keycenter={midi}{extra_definitions}"
-            )
-        
+            sfz_lines.append(f"<region> sample={sample_path} key={midi} pitch_keycenter={midi}")
+
         sfz_content = "\n".join(sfz_lines) + "\n"
-        
+
         sfz_path = os.path.join(output_dir, "instrument.sfz")
         with open(sfz_path, "w") as f:
             f.write(sfz_content)
@@ -50,9 +49,9 @@ def generate_pitch_shifted_instrument(output_dir, audio_file_path, pitch_keycent
         print(f"Error during pitch-shifted generation: {e}")
         return None, 0, 0
 
-def get_simple_sfz_content(audio_file_path, pitch_keycenter, get_extra_sfz_definitions):
-    """
-    Generates the content for a simple SFZ file.
+
+def get_simple_sfz_content(audio_file_path, pitch_keycenter, extra_defs: list[str]):
+    """Generates the content for a simple SFZ file.
     """
     if audio_file_path is None:
         return "// No audio file loaded"
@@ -63,8 +62,7 @@ def get_simple_sfz_content(audio_file_path, pitch_keycenter, get_extra_sfz_defin
     sfz_content.append(f"sample={os.path.basename(audio_file_path)}")
     sfz_content.append(f"pitch_keycenter={int(pitch_keycenter)}")
     
-    extra_defs = get_extra_sfz_definitions()
     if extra_defs:
-        sfz_content.append(extra_defs)
+        sfz_content.extend(extra_defs)
 
     return "\n".join(sfz_content)
