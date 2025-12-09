@@ -835,7 +835,7 @@ class SFZGenerator(Adw.ApplicationWindow):
                 if self.sample_rate:
                     crossfade_value = self.loop_crossfade_spin_row.get_value()
                     if crossfade_value > 0:
-                        parts.append(f"loop_crossfade={crossfade_value}")
+                        parts.append(f"loop_crossfade={crossfade_value:.3f}")
 
         if self.delay_spin_row.get_value() > 0:
             parts.append(f"ampeg_delay={self.delay_spin_row.get_value():.3f}")
