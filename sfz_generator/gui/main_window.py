@@ -233,6 +233,37 @@ class SFZGenerator(Adw.ApplicationWindow):
         loop_end_row.add_suffix(self.loop_end_spin)
         loop_group.add(loop_end_row)
 
+        # Loop crossfade
+        self.loop_crossfade_switch = Gtk.Switch()
+        self.loop_crossfade_switch.set_active(False)
+        self.loop_crossfade_switch.connect("notify::active", self.update_sfz_output)
+
+        self.loop_crossfade_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, 0, 1, 0.001
+        )
+        self.loop_crossfade_scale.set_value(0.05)
+        self.loop_crossfade_scale.set_sensitive(False)
+        self.loop_crossfade_scale.set_draw_value(True)
+        self.loop_crossfade_scale.set_value_pos(Gtk.PositionType.RIGHT)
+        self.loop_crossfade_scale.set_tooltip_text(
+            "Set the crossfade length in seconds for the loop"
+        )
+        self.loop_crossfade_scale.connect("value-changed", self.update_sfz_output)
+
+        loop_crossfade_row = Adw.ActionRow()
+        loop_crossfade_row.set_title("Loop Crossfade (seconds)")
+        loop_crossfade_row.set_tooltip_text(
+            "Enable and set the loop crossfade length in seconds (loop_crossfade)"
+        )
+        loop_crossfade_row.add_suffix(self.loop_crossfade_switch)
+        loop_crossfade_row.add_suffix(self.loop_crossfade_scale)
+        loop_group.add(loop_crossfade_row)
+
+        self.loop_crossfade_switch.connect(
+            "notify::active",
+            lambda s, p: self.loop_crossfade_scale.set_sensitive(s.get_active()),
+        )
+
         # ADSR group
         adsr_group = Adw.PreferencesGroup()
         adsr_group.set_title("Envelope (ADSR)")
@@ -691,8 +722,6 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.current_sfz_path = sfz_path
         self.sfz_label.set_text(os.path.basename(sfz_path))
         
-        self.update_controls_from_sfz(sfz_data)
-
         if sample_path:
             if os.path.exists(sample_path):
                 self.audio_file_path = sample_path
@@ -703,6 +732,8 @@ class SFZGenerator(Adw.ApplicationWindow):
                 dialog.add_response("ok", "OK")
                 dialog.set_modal(True)
                 dialog.present()
+        
+        self.update_controls_from_sfz(sfz_data)
 
     def update_controls_from_sfz(self, sfz_data):
         # Block signals to prevent unwanted updates
@@ -710,6 +741,8 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.loop_start_spin.handler_block_by_func(self.on_loop_marker_changed)
         self.loop_end_spin.handler_block_by_func(self.on_loop_marker_changed)
         self.pitch_keycenter.handler_block_by_func(self.update_sfz_output)
+        self.loop_crossfade_switch.handler_block_by_func(self.update_sfz_output)
+        self.loop_crossfade_scale.handler_block_by_func(self.update_sfz_output)
 
         try:
             # Loop mode
@@ -732,6 +765,18 @@ class SFZGenerator(Adw.ApplicationWindow):
             if "loop_end" in sfz_data:
                 self.loop_end = int(sfz_data["loop_end"])
                 self.loop_end_spin.set_value(self.loop_end)
+
+            if "loop_crossfade" in sfz_data:
+                if self.sample_rate and self.sample_rate > 0:
+                    crossfade_seconds = (
+                        int(sfz_data["loop_crossfade"]) / self.sample_rate
+                    )
+                    self.loop_crossfade_scale.set_value(crossfade_seconds)
+                    self.loop_crossfade_switch.set_active(True)
+                else:
+                    self.loop_crossfade_switch.set_active(False)
+            else:
+                self.loop_crossfade_switch.set_active(False)
 
             # ADSR
             if "ampeg_attack" in sfz_data:
@@ -765,6 +810,8 @@ class SFZGenerator(Adw.ApplicationWindow):
             self.loop_start_spin.handler_unblock_by_func(self.on_loop_marker_changed)
             self.loop_end_spin.handler_unblock_by_func(self.on_loop_marker_changed)
             self.pitch_keycenter.handler_unblock_by_func(self.update_sfz_output)
+            self.loop_crossfade_switch.handler_unblock_by_func(self.update_sfz_output)
+            self.loop_crossfade_scale.handler_unblock_by_func(self.update_sfz_output)
 
         # Update SFZ output
         self.update_sfz_output()
@@ -899,12 +946,14 @@ class SFZGenerator(Adw.ApplicationWindow):
         loop_mode = self.loop_strings.get_string(selected)
 
         # Enable/disable loop markers
-        if loop_mode in ["loop_sustain", "loop_continuous"]:
-            self.loop_start_spin.set_sensitive(True)
-            self.loop_end_spin.set_sensitive(True)
-        else:
-            self.loop_start_spin.set_sensitive(False)
-            self.loop_end_spin.set_sensitive(False)
+        is_looping = loop_mode in ["loop_sustain", "loop_continuous"]
+        self.loop_start_spin.set_sensitive(is_looping)
+        self.loop_end_spin.set_sensitive(is_looping)
+        self.loop_crossfade_switch.set_sensitive(is_looping)
+        self.loop_crossfade_scale.set_sensitive(
+            is_looping and self.loop_crossfade_switch.get_active()
+        )
+
 
         self.update_sfz_output()
 
@@ -951,6 +1000,11 @@ class SFZGenerator(Adw.ApplicationWindow):
                     parts.append(f"loop_start={int(self.loop_start)}")
                 if self.loop_end is not None:
                     parts.append(f"loop_end={int(self.loop_end)}")
+                if self.loop_crossfade_switch.get_active() and self.sample_rate:
+                    crossfade_samples = int(
+                        self.loop_crossfade_scale.get_value() * self.sample_rate
+                    )
+                    parts.append(f"loop_crossfade={crossfade_samples}")
 
         if self.delay_switch.get_active():
             parts.append(f"ampeg_delay={self.delay_scale.get_value():.3f}")
