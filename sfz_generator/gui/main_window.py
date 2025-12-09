@@ -133,22 +133,24 @@ class SFZGenerator(Adw.ApplicationWindow):
         return False  # Event has not been handled
 
     def create_controls(self):
-        # File info group
-        file_group = Adw.PreferencesGroup()
-        file_group.set_title("File Information")
-        self.left_panel.append(file_group)
+        main_group = Adw.PreferencesGroup()
+        self.left_panel.append(main_group)
+
+        # --- File Information Expander ---
+        file_expander = Adw.ExpanderRow(title="File Information", expanded=True)
+        main_group.add(file_expander)
 
         self.file_label = Gtk.Label(label="No file loaded")
         self.file_label.set_halign(Gtk.Align.START)
         file_row = Adw.ActionRow(title="Audio File")
         file_row.add_suffix(self.file_label)
-        file_group.add(file_row)
+        file_expander.add_row(file_row)
 
         self.sfz_label = Gtk.Label(label="No SFZ loaded")
         self.sfz_label.set_halign(Gtk.Align.START)
         sfz_row = Adw.ActionRow(title="SFZ File")
         sfz_row.add_suffix(self.sfz_label)
-        file_group.add(sfz_row)
+        file_expander.add_row(sfz_row)
 
         # Playback controls
         playback_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
@@ -172,24 +174,22 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.loop_playback_check.set_sensitive(False)
         playback_box.append(self.loop_playback_check)
 
-        file_group.add(Gtk.Separator())
         playback_row = Adw.ActionRow()
         playback_row.set_child(playback_box)
-        file_group.add(playback_row)
+        file_expander.add_row(playback_row)
 
-        # Loop mode group
-        loop_group = Adw.PreferencesGroup()
-        loop_group.set_title("Loop Settings")
-        self.left_panel.append(loop_group)
+        # --- Loop Settings Expander ---
+        loop_expander = Adw.ExpanderRow(title="Loop Settings", expanded=True)
+        main_group.add(loop_expander)
 
         self.zero_crossing_check = Gtk.CheckButton(label="Snap to Zero-Crossing")
         self.zero_crossing_check.set_tooltip_text("Snap loop points to the nearest zero-crossing to prevent clicks")
         self.zero_crossing_check.set_active(True)
         self.zero_crossing_check.connect("toggled", self.on_zero_crossing_toggled)
-
+        
         zero_crossing_row = Adw.ActionRow(title="Snapping")
         zero_crossing_row.add_suffix(self.zero_crossing_check)
-        loop_group.add(zero_crossing_row)
+        loop_expander.add_row(zero_crossing_row)
 
         self.loop_strings = Gtk.StringList.new(
             ["no_loop", "one_shot", "loop_sustain", "loop_continuous"]
@@ -197,10 +197,9 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.loop_mode = Gtk.DropDown(model=self.loop_strings, tooltip_text="Set the loop mode for the sample")
         self.loop_mode.set_selected(0)
         self.loop_mode.connect("notify::selected", self.on_loop_mode_changed)
-
         loop_row = Adw.ActionRow(title="Loop Mode")
         loop_row.add_suffix(self.loop_mode)
-        loop_group.add(loop_row)
+        loop_expander.add_row(loop_row)
 
         self.loop_start_spin = Gtk.SpinButton.new_with_range(0, 100, 1)
         self.loop_start_spin.set_tooltip_text("Set the start point of the loop in samples")
@@ -208,7 +207,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.loop_start_spin.connect("value-changed", self.on_loop_marker_changed)
         loop_start_row = Adw.ActionRow(title="Loop Start (samples)")
         loop_start_row.add_suffix(self.loop_start_spin)
-        loop_group.add(loop_start_row)
+        loop_expander.add_row(loop_start_row)
 
         self.loop_end_spin = Gtk.SpinButton.new_with_range(0, 100, 1)
         self.loop_end_spin.set_tooltip_text("Set the end point of the loop in samples")
@@ -216,107 +215,99 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.loop_end_spin.connect("value-changed", self.on_loop_marker_changed)
         loop_end_row = Adw.ActionRow(title="Loop End (samples)")
         loop_end_row.add_suffix(self.loop_end_spin)
-        loop_group.add(loop_end_row)
+        loop_expander.add_row(loop_end_row)
 
         self.loop_crossfade_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
         self.loop_crossfade_spin_row.set_title("Loop Crossfade (s)")
         self.loop_crossfade_spin_row.set_value(0)
         self.loop_crossfade_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
-        loop_group.add(self.loop_crossfade_spin_row)
+        loop_expander.add_row(self.loop_crossfade_spin_row)
 
-        # ADSR group
-        adsr_group = Adw.PreferencesGroup()
-        adsr_group.set_title("Envelope (ADSR)")
-        self.left_panel.append(adsr_group)
+        # --- Envelope Expander ---
+        adsr_expander = Adw.ExpanderRow(title="Envelope (ADSR)", expanded=True)
+        main_group.add(adsr_expander)
 
         self.delay_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
         self.delay_spin_row.set_title("Delay (s)")
         self.delay_spin_row.set_value(0)
         self.delay_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
-        adsr_group.add(self.delay_spin_row)
-
+        adsr_expander.add_row(self.delay_spin_row)
+        
         self.attack_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
         self.attack_spin_row.set_title("Attack (s)")
         self.attack_spin_row.set_value(0)
         self.attack_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
-        adsr_group.add(self.attack_spin_row)
+        adsr_expander.add_row(self.attack_spin_row)
 
         self.hold_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
         self.hold_spin_row.set_title("Hold (s)")
         self.hold_spin_row.set_value(0)
         self.hold_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
-        adsr_group.add(self.hold_spin_row)
+        adsr_expander.add_row(self.hold_spin_row)
 
         self.decay_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
         self.decay_spin_row.set_title("Decay (s)")
         self.decay_spin_row.set_value(0)
         self.decay_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
-        adsr_group.add(self.decay_spin_row)
+        adsr_expander.add_row(self.decay_spin_row)
 
         self.sustain_spin_row = Adw.SpinRow.new_with_range(0, 100, 1)
         self.sustain_spin_row.set_title("Sustain (%)")
         self.sustain_spin_row.set_value(100)
         self.sustain_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
-        adsr_group.add(self.sustain_spin_row)
+        adsr_expander.add_row(self.sustain_spin_row)
 
         self.release_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
         self.release_spin_row.set_title("Release (s)")
         self.release_spin_row.set_value(0)
         self.release_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
-        adsr_group.add(self.release_spin_row)
+        adsr_expander.add_row(self.release_spin_row)
 
         self.envelope_widget = EnvelopeWidget()
-        adsr_group.add(self.envelope_widget)
+        adsr_expander.add_row(self.envelope_widget)
 
-        # Pitch group
-        pitch_group = Adw.PreferencesGroup()
-        pitch_group.set_title("Pitch Settings")
-        self.left_panel.append(pitch_group)
+        # --- Pitch Settings Expander ---
+        pitch_expander = Adw.ExpanderRow(title="Pitch Settings")
+        main_group.add(pitch_expander)
 
-        # Pitch keycenter
         self.pitch_keycenter = Gtk.SpinButton.new_with_range(0, 127, 1)
         self.pitch_keycenter.set_value(60)  # Middle C
         self.pitch_keycenter.set_tooltip_text("The MIDI note at which the sample plays back at its original pitch")
         self.pitch_keycenter.connect("value-changed", self.update_sfz_output)
-
         pitch_row = Adw.ActionRow(title="Pitch Keycenter")
         pitch_row.add_suffix(self.pitch_keycenter)
-        pitch_group.add(pitch_row)
+        pitch_expander.add_row(pitch_row)
 
-        gen_group = Adw.PreferencesGroup()
-        gen_group.set_title("Generation Settings")
-        self.left_panel.append(gen_group)
+        # --- Generation Settings Expander ---
+        gen_expander = Adw.ExpanderRow(title="Generation Settings")
+        main_group.add(gen_expander)
 
         self.pitch_shift_check = Gtk.CheckButton(label="Enable Pitch-shifting")
         self.pitch_shift_check.set_tooltip_text("Generate a separate, pre-pitch-shifted audio file for each note")
         self.pitch_shift_check.set_active(False)
         self.pitch_shift_check.connect("toggled", self.on_pitch_shift_toggled)
-
         gen_row = Adw.ActionRow(title="Advanced Generation")
         gen_row.add_suffix(self.pitch_shift_check)
-        gen_group.add(gen_row)
+        gen_expander.add_row(gen_row)
 
-        # Low Key
         self.low_key_spin = Gtk.SpinButton.new_with_range(0, 127, 1)
         self.low_key_spin.set_value(24) # C1
         self.low_key_spin.set_tooltip_text("The lowest MIDI note to generate a sample for")
         self.low_key_spin.set_sensitive(False)
-
         self.low_key_row = Adw.ActionRow(title="Low Key")
         self.low_key_row.add_suffix(self.low_key_spin)
         self.low_key_row.set_visible(False)
-        gen_group.add(self.low_key_row)
+        gen_expander.add_row(self.low_key_row)
 
-        # High Key
         self.high_key_spin = Gtk.SpinButton.new_with_range(0, 127, 1)
         self.high_key_spin.set_value(84) # C6
         self.high_key_spin.set_tooltip_text("The highest MIDI note to generate a sample for")
         self.high_key_spin.set_sensitive(False)
-
         self.high_key_row = Adw.ActionRow(title="High Key")
         self.high_key_row.add_suffix(self.high_key_spin)
         self.high_key_row.set_visible(False)
-        gen_group.add(self.high_key_row)
+        gen_expander.add_row(self.high_key_row)
+
 
     def create_waveform_display(self):
         # Create waveform frame
