@@ -20,6 +20,8 @@ makedepends=(
     'python-librosa'
     'python-numpy'
     'python-gobject'
+    'python-standard-aifc'
+    'python-standard-sunau'
 )
 provides=("${pkgname%-git}")
 conflicts=("${pkgname%-git}")
