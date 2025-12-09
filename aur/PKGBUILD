@@ -1,0 +1,47 @@
+# Maintainer: Fabien Devaux <fdev31@gmail.com>
+# Contributor: Fabien Devaux <fdev31@gmail.com>
+pkgname=sfz_generator
+pkgver=r9.aa1a282
+pkgrel=1
+pkgdesc="Straightforward GUI to create SFZ files from a single sample"
+arch=(any)
+url="https://github.com/fdev31/sfz_generator"
+license=('MIT')
+groups=()
+depends=('python')
+makedepends=(
+    'git'
+    'libadwaita'
+    'python-build'
+    'python-installer'
+    'python-poetry'
+    'python-soundfile'
+    'python-sounddevice'
+    'python-librosa'
+    'python-numpy'
+    'python-gobject'
+)
+provides=("${pkgname%-git}")
+conflicts=("${pkgname%-git}")
+replaces=()
+backup=()
+options=()
+install=
+source=(git+"https://github.com/fdev31/sfz_generator#branch=main")
+noextract=()
+md5sums=('SKIP')
+
+pkgver() {
+    cd "$srcdir/${pkgname%-git}"
+    printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+    cd "$srcdir/${pkgname%-git}"
+    python -m build --wheel --no-isolation
+}
+
+package() {
+    cd "$srcdir/${pkgname%-git}"
+    python -m installer --destdir="$pkgdir" dist/*.whl
+}

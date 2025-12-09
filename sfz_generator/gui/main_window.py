@@ -14,35 +14,14 @@ import sounddevice as sd
 import re
 
 from sfz_generator.widgets.waveform_widget import WaveformWidget
+from sfz_generator.utils import midi_to_name
+from sfz_generator.audio.processing import process_midi_note, load_audio
+from sfz_generator.audio.player import play
+from sfz_generator.sfz.parser import parse_sfz_file
+from sfz_generator.sfz.generator import generate_pitch_shifted_instrument, get_simple_sfz_content
 import librosa
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-
-def midi_to_name(midi):
-    octave = (midi // 12) - 1
-    note = NOTES[midi % 12]
-    return f"{note}{octave}"
-
-def process_midi_note(args):
-    """Generate pitch-shifted sample for a single MIDI note using librosa."""
-    inp, out_dir, midi, root, sr = args
-    
-    semitones = midi - root
-    note_name = midi_to_name(midi)
-    out_wav = f"{note_name}.wav"
-    out_path = os.path.join(out_dir, out_wav)
-
-    try:
-        y, loaded_sr = librosa.load(inp, sr=sr)
-        
-        # Pitch shift
-        y_shifted = librosa.effects.pitch_shift(y, sr=loaded_sr, n_steps=float(semitones))
-        
-        sf.write(out_path, y_shifted, loaded_sr)
-        return (midi, note_name, True, None)
-    except Exception as e:
-        return (midi, note_name, False, str(e))
 
 
 class SFZGenerator(Adw.ApplicationWindow):
@@ -62,7 +41,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.pan_offset = 0
         self.is_playing = False
         self.playback_thread = None
-        self.stop_playback = False
+        self.stop_playback_event = threading.Event()
         self.current_sfz_path = None
 
         # Main layout
@@ -699,83 +678,31 @@ class SFZGenerator(Adw.ApplicationWindow):
             dialog.present()
 
     def parse_sfz_file(self, sfz_path):
-        try:
-            self.current_sfz_path = sfz_path
-            self.sfz_label.set_text(os.path.basename(sfz_path))
+        sfz_data, sample_path, error = parse_sfz_file(sfz_path)
 
-            # Read SFZ file
-            with open(sfz_path, "r") as f:
-                content = f.read()
-
-            # Parse SFZ content
-            sfz_data = self.parse_sfz_content(content, os.path.dirname(sfz_path))
-
-            # Update GUI controls
-            self.update_controls_from_sfz(sfz_data)
-
-            # Load audio file if specified
-            if "sample" in sfz_data:
-                audio_path = sfz_data["sample"]
-                if os.path.isabs(audio_path):
-                    self.audio_file_path = audio_path
-                else:
-                    # Relative path - combine with SFZ directory
-                    self.audio_file_path = os.path.join(
-                        os.path.dirname(sfz_path), audio_path
-                    )
-
-                if os.path.exists(self.audio_file_path):
-                    self.load_audio_file()
-                else:
-                    # Show warning if audio file not found
-                    dialog = Adw.MessageDialog.new(self, "Warning", "Audio file not found")
-                    dialog.set_body(f"The referenced audio file '{audio_path}' was not found at:\n{self.audio_file_path}\n\nYou can load it manually using 'Open Audio'.")
-                    dialog.add_response("ok", "OK")
-                    dialog.set_modal(True)
-                    dialog.present()
-
-        except Exception as e:
+        if error:
             dialog = Adw.MessageDialog.new(self, "Error", "Failed to load SFZ file")
-            dialog.set_body(f"Error: {str(e)}")
+            dialog.set_body(f"Error: {error}")
             dialog.add_response("ok", "OK")
             dialog.set_modal(True)
             dialog.present()
+            return
 
-    def parse_sfz_content(self, content, sfz_dir):
-        # Initialize data dictionary
-        sfz_data = {}
+        self.current_sfz_path = sfz_path
+        self.sfz_label.set_text(os.path.basename(sfz_path))
+        
+        self.update_controls_from_sfz(sfz_data)
 
-        # Remove comments and split into lines
-        lines = []
-        for line in content.split("\n"):
-            # Remove comments
-            line = re.sub(r"//.*$", "", line)
-            line = re.sub(r"#.*$", "", line)
-            line = line.strip()
-            if line:
-                lines.append(line)
-
-        # Parse opcodes
-        current_section = None
-        for line in lines:
-            line = line.strip()
-
-            # Check for section headers
-            if line.startswith("<") and line.endswith(">"):
-                current_section = line[1:-1]
-                continue
-
-            # Parse opcode=value pairs
-            if "=" in line:
-                opcode, value = line.split("=", 1)
-                opcode = opcode.strip().lower()
-                value = value.strip()
-
-                # Store only the first region's opcodes
-                if current_section == "region":
-                    sfz_data[opcode] = value
-
-        return sfz_data
+        if sample_path:
+            if os.path.exists(sample_path):
+                self.audio_file_path = sample_path
+                self.load_audio_file()
+            else:
+                dialog = Adw.MessageDialog.new(self, "Warning", "Audio file not found")
+                dialog.set_body(f"The referenced audio file was not found at:\n{sample_path}\n\nYou can load it manually using 'Open Audio'.")
+                dialog.add_response("ok", "OK")
+                dialog.set_modal(True)
+                dialog.present()
 
     def update_controls_from_sfz(self, sfz_data):
         # Block signals to prevent unwanted updates
@@ -843,123 +770,81 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.update_sfz_output()
 
     def load_audio_file(self):
-        try:
-            self.audio_data, self.sample_rate = sf.read(self.audio_file_path)
+        audio_data, audio_data_int16, sample_rate, error = load_audio(self.audio_file_path)
 
-            # Convert to mono if stereo
-            if len(self.audio_data.shape) > 1:
-                self.audio_data = np.mean(self.audio_data, axis=1)
-
-            # Normalize to 16-bit integer range for playback
-            self.audio_data_int16 = (self.audio_data * 32767).astype(np.int16)
-
-            self.file_label.set_text(os.path.basename(self.audio_file_path))
-
-            # Update waveform widget
-            self.waveform_widget.set_audio_data(self.audio_data, self.sample_rate)
-            if self.zero_crossing_check.get_active():
-                self.waveform_widget.set_snap_to_zero_crossing(True)
-
-            # Update loop marker ranges
-            max_samples = len(self.audio_data) - 1
-            self.loop_start_spin.set_range(0, max_samples)
-            self.loop_end_spin.set_range(0, max_samples)
-
-            # Set default loop points if not set
-            if self.loop_start is None:
-                self.loop_start = len(self.audio_data) // 4
-                self.loop_start_spin.set_value(self.loop_start)
-            if self.loop_end is None:
-                self.loop_end = len(self.audio_data) // 2
-                self.loop_end_spin.set_value(self.loop_end)
-
-            # Update waveform widget with loop points
-            self.waveform_widget.set_loop_points(self.loop_start, self.loop_end)
-
-            # Enable playback controls
-            self.play_button.set_sensitive(True)
-            self.loop_playback_check.set_sensitive(True)
-
-            self.update_sfz_output()
-
-        except Exception as e:
+        if error:
             dialog = Adw.MessageDialog.new(self, "Error", "Failed to load audio file")
-            dialog.set_body(f"Error: {str(e)}")
+            dialog.set_body(f"Error: {error}")
             dialog.add_response("ok", "OK")
             dialog.set_modal(True)
             dialog.present()
+            return
+
+        self.audio_data = audio_data
+        self.audio_data_int16 = audio_data_int16
+        self.sample_rate = sample_rate
+
+        self.file_label.set_text(os.path.basename(self.audio_file_path))
+
+        # Update waveform widget
+        self.waveform_widget.set_audio_data(self.audio_data, self.sample_rate)
+        if self.zero_crossing_check.get_active():
+            self.waveform_widget.set_snap_to_zero_crossing(True)
+
+        # Update loop marker ranges
+        max_samples = len(self.audio_data) - 1
+        self.loop_start_spin.set_range(0, max_samples)
+        self.loop_end_spin.set_range(0, max_samples)
+
+        # Set default loop points if not set
+        if self.loop_start is None:
+            self.loop_start = len(self.audio_data) // 4
+            self.loop_start_spin.set_value(self.loop_start)
+        if self.loop_end is None:
+            self.loop_end = len(self.audio_data) // 2
+            self.loop_end_spin.set_value(self.loop_end)
+
+        # Update waveform widget with loop points
+        self.waveform_widget.set_loop_points(self.loop_start, self.loop_end)
+
+        # Enable playback controls
+        self.play_button.set_sensitive(True)
+        self.loop_playback_check.set_sensitive(True)
+
+        self.update_sfz_output()
 
     def on_play_clicked(self, button):
         if not self.is_playing:
             self.is_playing = True
-            self.stop_playback = False
+            self.stop_playback_event.clear()
             self.play_button.set_sensitive(False)
             self.stop_button.set_sensitive(True)
 
-            # Update waveform widget
-            self.waveform_widget.set_playback_state(
-                True, self.loop_playback_check.get_active()
+            self.waveform_widget.set_playback_state(True, self.loop_playback_check.get_active())
+            
+            args = (
+                self.audio_data_int16,
+                self.sample_rate,
+                self.loop_playback_check.get_active(),
+                self.loop_start,
+                self.loop_end,
+                self.stop_playback_event,
+                self.show_playback_error,
+                self.playback_finished,
             )
-
-            # Start playback in a separate thread
-            self.playback_thread = threading.Thread(target=self.play_audio)
+            self.playback_thread = threading.Thread(target=play, args=args)
             self.playback_thread.daemon = True
             self.playback_thread.start()
 
     def on_stop_clicked(self, button):
-        self.stop_playback = True
+        if self.is_playing:
+            self.stop_playback_event.set()
         self.is_playing = False
         self.play_button.set_sensitive(True)
         self.stop_button.set_sensitive(False)
 
         # Update waveform widget
         self.waveform_widget.set_playback_state(False)
-
-    def play_audio(self):
-        if self.audio_data_int16 is None:
-            return
-
-        audio_data = self.audio_data_int16
-        channels = 1 if audio_data.ndim == 1 else audio_data.shape[1]
-        frames_per_chunk = max(self.sample_rate // 20, 1024)
-
-        def as_frames(buffer):
-            return buffer.reshape(-1, 1) if channels == 1 else buffer
-
-        try:
-            with sd.OutputStream( 
-                samplerate=self.sample_rate, channels=channels, dtype=audio_data.dtype
-            ) as stream:
-                if (
-                    self.loop_playback_check.get_active()
-                    and self.loop_start is not None
-                    and self.loop_end is not None
-                    and self.loop_end > self.loop_start
-                ):
-                    loop_segment = audio_data[self.loop_start : self.loop_end]
-                    if loop_segment.size == 0:
-                        return
-                    loop_frames = as_frames(loop_segment)
-                    while not self.stop_playback:
-                        stream.write(loop_frames)
-                        if self.stop_playback:
-                            stream.abort()
-                            break
-                else:
-                    frames = as_frames(audio_data)
-                    total_frames = frames.shape[0]
-                    current_frame = 0
-                    while current_frame < total_frames:
-                        if self.stop_playback:
-                            stream.abort()
-                            break
-                        chunk_end = min(current_frame + frames_per_chunk, total_frames)
-                        stream.write(frames[current_frame:chunk_end])
-                        current_frame = chunk_end
-        except Exception as e:
-            GLib.idle_add(self.show_playback_error, str(e))
-        finally:
-            GLib.idle_add(self.playback_finished)
 
     def playback_finished(self):
         self.is_playing = False
@@ -1100,61 +985,25 @@ class SFZGenerator(Adw.ApplicationWindow):
     def generate_pitch_shifted_sfz(self, output_dir):
         GLib.idle_add(self.spinner.start)
         GLib.idle_add(self.save_sfz_button.set_sensitive, False)
-        
-        try:
-            inp = self.audio_file_path
-            root = int(self.pitch_keycenter.get_value())
-            low = int(self.low_key_spin.get_value())
-            high = int(self.high_key_spin.get_value())
-            sr = self.sample_rate
-            
-            samples_dir_name = "samples"
-            samples_dir_path = os.path.join(output_dir, samples_dir_name)
-            os.makedirs(samples_dir_path, exist_ok=True)
 
-            tasks = [(inp, samples_dir_path, midi, root, sr) for midi in range(low, high + 1)]
-            
-            results = []
-            num_total = len(tasks)
-            with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-                futures = {executor.submit(process_midi_note, task): task for task in tasks}
-                
-                for future in as_completed(futures):
-                    midi, note_name, success, error = future.result()
-                    if not success:
-                        print(f"Failed to generate {note_name}: {error}")
-                    results.append((midi, note_name, success))
+        def thread_func():
+            sfz_path, num_successful, num_total = generate_pitch_shifted_instrument(
+                output_dir,
+                self.audio_file_path,
+                int(self.pitch_keycenter.get_value()),
+                int(self.low_key_spin.get_value()),
+                int(self.high_key_spin.get_value()),
+                self.sample_rate,
+                self.get_extra_sfz_definitions
+            )
 
-            successful_notes = [(midi, note_name) for midi, note_name, success in sorted(results) if success]
-            
-            if not successful_notes:
-                GLib.idle_add(self.show_generation_complete_dialog, None, 0, num_total)
-                return
-
-            sfz_lines = ["<group>"]
-            extra_definitions = self.get_extra_sfz_definitions()
-
-            for midi, note_name in successful_notes:
-                out_wav = f"{note_name}.wav"
-                sample_path = os.path.join(samples_dir_name, out_wav)
-                sfz_lines.append(
-                    f"<region> sample={sample_path} key={midi} pitch_keycenter={midi}{extra_definitions}"
-                )
-            
-            sfz_content = "\n".join(sfz_lines) + "\n"
-            
-            sfz_path = os.path.join(output_dir, "instrument.sfz")
-            with open(sfz_path, "w") as f:
-                f.write(sfz_content)
-            
-            GLib.idle_add(self.show_generation_complete_dialog, sfz_path, len(successful_notes), num_total)
-
-        except Exception as e:
-            print(f"Error during pitch-shifted generation: {e}")
-            GLib.idle_add(self.show_generation_complete_dialog, None, 0, 0)
-        finally:
+            GLib.idle_add(self.show_generation_complete_dialog, sfz_path, num_successful, num_total)
             GLib.idle_add(self.spinner.stop)
             GLib.idle_add(self.save_sfz_button.set_sensitive, True)
+
+        thread = threading.Thread(target=thread_func)
+        thread.daemon = True
+        thread.start()
 
     def update_sfz_output(self, *args):
         if self.pitch_shift_check.get_active():
@@ -1164,23 +1013,13 @@ class SFZGenerator(Adw.ApplicationWindow):
                 "// ADSR and loop settings will be applied to all samples."
             )
             return
-
-        if self.audio_file_path is None:
-            self.sfz_buffer.set_text("// No audio file loaded")
-            return
-
-        # Generate SFZ content for simple mode
-        sfz_content = []
-        sfz_content.append("<group>")
-        sfz_content.append("<region>")
-        sfz_content.append(f"sample={os.path.basename(self.audio_file_path)}")
-        sfz_content.append(f"pitch_keycenter={int(self.pitch_keycenter.get_value())}")
-        
-        extra_defs = self.get_extra_sfz_definitions()
-        if extra_defs:
-            sfz_content.append(extra_defs)
-
-        self.sfz_buffer.set_text("\n".join(sfz_content))
+            
+        content = get_simple_sfz_content(
+            self.audio_file_path,
+            self.pitch_keycenter.get_value(),
+            self.get_extra_sfz_definitions
+        )
+        self.sfz_buffer.set_text(content)
 
     def on_download_sfz(self, button):
         pass # Or remove entirely

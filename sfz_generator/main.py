@@ -16,6 +16,9 @@ class SFZGeneratorApp(Adw.Application):
         win.present()
 
 
-if __name__ == "__main__":
+def main():
     app = SFZGeneratorApp()
     app.run(sys.argv)
+
+if __name__ == "__main__":
+    main()
