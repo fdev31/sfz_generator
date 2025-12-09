@@ -4,7 +4,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gdk", "4.0")
 
-from gi.repository import Gtk, Adw, Gdk, GLib, GObject
+from gi.repository import Gtk, Adw, Gdk, GLib, GObject, Gio
 import numpy as np
 import soundfile as sf
 import os
@@ -427,29 +427,32 @@ class SFZGenerator(Adw.ApplicationWindow):
                 return
 
             # Choose a directory to save the instrument
-            dialog = Gtk.FileChooserNative.new(
-                "Save Instrument Folder",
+            file_dialog = Gtk.FileDialog.new()
+            file_dialog.set_title("Save Instrument Folder")
+            if self.audio_file_path:
+                initial_folder = Gio.File.new_for_path(os.path.dirname(self.audio_file_path))
+                file_dialog.set_initial_folder(initial_folder)
+                file_dialog.set_initial_name(Path(self.audio_file_path).stem)
+
+            file_dialog.select_folder(
                 self,
-                Gtk.FileChooserAction.SELECT_FOLDER,
-                "_Save",
-                "_Cancel",
+                None,
+                self._on_folder_selected_for_generation
             )
-            dialog.set_current_name(Path(self.audio_file_path).stem)
 
-
-            def on_response(dialog, response):
-                if response == Gtk.ResponseType.ACCEPT:
-                    folder = dialog.get_file()
-                    if folder:
-                        output_dir = folder.get_path()
-                        # Run generation in background
-                        thread = threading.Thread(target=self.generate_pitch_shifted_sfz, args=(output_dir,))
-                        thread.daemon = True
-                        thread.start()
-                dialog.destroy()
-
-            dialog.connect("response", on_response)
-            dialog.show()
+    def _on_folder_selected_for_generation(self, dialog, result):
+        try:
+            folder = dialog.select_folder_finish(result)
+            if folder:
+                output_dir = folder.get_path()
+                # Run generation in background
+                thread = threading.Thread(target=self.generate_pitch_shifted_sfz, args=(output_dir,))
+                thread.daemon = True
+                thread.start()
+            else:
+                print("Folder selection cancelled.")
+        except Exception as e:
+            print(f"Error selecting folder: {e}")
         else:
             # Simple mode: save single SFZ file
             if self.sfz_file is None:
