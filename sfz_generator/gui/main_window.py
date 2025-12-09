@@ -734,8 +734,6 @@ class SFZGenerator(Adw.ApplicationWindow):
                     dialog.set_modal(True)
                     dialog.present()
 
-            self.download_button.set_sensitive(True)
-
         except Exception as e:
             dialog = Adw.MessageDialog.new(self, "Error", "Failed to load SFZ file")
             dialog.set_body(f"Error: {str(e)}")

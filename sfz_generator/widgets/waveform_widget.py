@@ -73,7 +73,7 @@ class WaveformWidget(Gtk.DrawingArea):
         self.audio_data = audio_data
         self.sample_rate = sample_rate
         if self.audio_data is not None:
-            self.zero_crossings = np.where(librosa.util.zero_crossings(self.audio_data))[0]
+            self.zero_crossings = np.where(librosa.zero_crossings(self.audio_data))[0]
         else:
             self.zero_crossings = None
         self.queue_draw()
