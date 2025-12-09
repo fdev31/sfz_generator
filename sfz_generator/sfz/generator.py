@@ -31,12 +31,11 @@ def generate_pitch_shifted_instrument(
         if not successful_notes:
             return None, 0, num_total
 
-        sfz_lines = ["<global>"] +  extra_definitions + [ "<group>"]
+        sfz_lines = ["<control>", f"default_path={samples_dir_name}", "<global>"] +  extra_definitions + [ "<group>"]
 
         for midi, note_name in successful_notes:
             out_wav = f"{note_name}.wav"
-            sample_path = os.path.join(samples_dir_name, out_wav)
-            sfz_lines.append(f"<region> sample={sample_path} key={midi} pitch_keycenter={midi}")
+            sfz_lines.append(f"<region> sample={out_wav} key={midi} pitch_keycenter={midi}")
 
         sfz_content = "\n".join(sfz_lines) + "\n"
 
