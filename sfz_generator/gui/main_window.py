@@ -677,6 +677,8 @@ class SFZGenerator(Adw.ApplicationWindow):
                 if file:
                     sfz_path = file.get_path()
                     self.sfz_file = sfz_path
+                    self.loop_start = None
+                    self.loop_end = None
                     self.parse_sfz_file(sfz_path)
             dialog.destroy()
 
