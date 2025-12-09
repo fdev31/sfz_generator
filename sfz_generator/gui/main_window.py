@@ -136,21 +136,31 @@ class SFZGenerator(Adw.ApplicationWindow):
         main_group = Adw.PreferencesGroup()
         self.left_panel.append(main_group)
 
-        # --- File Information Expander ---
-        file_expander = Adw.ExpanderRow(title="File Information", expanded=True)
-        main_group.add(file_expander)
+        # --- General Expander ---
+        general_expander = Adw.ExpanderRow(title="General", expanded=True)
+        main_group.add(general_expander)
 
         self.file_label = Gtk.Label(label="No file loaded")
         self.file_label.set_halign(Gtk.Align.START)
         file_row = Adw.ActionRow(title="Audio File")
         file_row.add_suffix(self.file_label)
-        file_expander.add_row(file_row)
+        general_expander.add_row(file_row)
 
         self.sfz_label = Gtk.Label(label="No SFZ loaded")
         self.sfz_label.set_halign(Gtk.Align.START)
         sfz_row = Adw.ActionRow(title="SFZ File")
         sfz_row.add_suffix(self.sfz_label)
-        file_expander.add_row(sfz_row)
+        general_expander.add_row(sfz_row)
+
+        self.trigger_strings = Gtk.StringList.new(
+            ["attack", "release", "first", "legato", "release_key"]
+        )
+        self.trigger_mode = Gtk.DropDown(model=self.trigger_strings, tooltip_text="Set the trigger mode for the sample")
+        self.trigger_mode.set_selected(0) # Default to 'attack'
+        self.trigger_mode.connect("notify::selected", self.on_trigger_mode_changed)
+        trigger_row = Adw.ActionRow(title="Trigger Mode")
+        trigger_row.add_suffix(self.trigger_mode)
+        general_expander.add_row(trigger_row)
 
         # Playback controls
         playback_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
@@ -176,7 +186,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         playback_row = Adw.ActionRow()
         playback_row.set_child(playback_box)
-        file_expander.add_row(playback_row)
+        general_expander.add_row(playback_row)
 
         # --- Loop Settings Expander ---
         loop_expander = Adw.ExpanderRow(title="Loop Settings", expanded=True)
@@ -582,6 +592,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.decay_spin_row.get_adjustment().handler_block_by_func(self.update_sfz_output)
         self.sustain_spin_row.get_adjustment().handler_block_by_func(self.update_sfz_output)
         self.release_spin_row.get_adjustment().handler_block_by_func(self.update_sfz_output)
+        self.trigger_mode.handler_block_by_func(self.on_trigger_mode_changed)
 
         try:
             # Loop mode
@@ -595,6 +606,20 @@ class SFZGenerator(Adw.ApplicationWindow):
                     self.loop_mode.set_selected(2)
                 elif loop_mode == "loop_continuous":
                     self.loop_mode.set_selected(3)
+
+            # Trigger mode
+            if "trigger" in sfz_data:
+                trigger_value = sfz_data["trigger"]
+                if trigger_value == "attack":
+                    self.trigger_mode.set_selected(0)
+                elif trigger_value == "release":
+                    self.trigger_mode.set_selected(1)
+                elif trigger_value == "first":
+                    self.trigger_mode.set_selected(2)
+                elif trigger_value == "legato":
+                    self.trigger_mode.set_selected(3)
+                elif trigger_value == "release_key":
+                    self.trigger_mode.set_selected(4)
 
             # Loop points
             if "loop_start" in sfz_data:
@@ -650,6 +675,7 @@ class SFZGenerator(Adw.ApplicationWindow):
             self.decay_spin_row.get_adjustment().handler_unblock_by_func(self.update_sfz_output)
             self.sustain_spin_row.get_adjustment().handler_unblock_by_func(self.update_sfz_output)
             self.release_spin_row.get_adjustment().handler_unblock_by_func(self.update_sfz_output)
+            self.trigger_mode.handler_unblock_by_func(self.on_trigger_mode_changed)
 
 
         # Update SFZ output
@@ -815,6 +841,9 @@ class SFZGenerator(Adw.ApplicationWindow):
         is_active = button.get_active()
         self.waveform_widget.set_snap_to_zero_crossing(is_active)
 
+    def on_trigger_mode_changed(self, dropdown, param):
+        self.update_sfz_output()
+
     def on_pitch_shift_toggled(self, button):
         is_active = button.get_active()
         self.low_key_spin.set_sensitive(is_active)
@@ -852,6 +881,10 @@ class SFZGenerator(Adw.ApplicationWindow):
             parts.append(f"ampeg_sustain={int(self.sustain_spin_row.get_value())}")
         if self.release_spin_row.get_value() > 0:
             parts.append(f"ampeg_release={self.release_spin_row.get_value():.3f}")
+
+        selected_trigger = self.trigger_strings.get_string(self.trigger_mode.get_selected())
+        if selected_trigger != "attack":
+            parts.append(f"trigger={selected_trigger}")
 
         if parts:
             return parts
