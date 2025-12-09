@@ -162,6 +162,32 @@ class SFZGenerator(Adw.ApplicationWindow):
         trigger_row.add_suffix(self.trigger_mode)
         general_expander.add_row(trigger_row)
 
+        self.pitch_keycenter = Gtk.SpinButton.new_with_range(0, 127, 1)
+        self.pitch_keycenter.set_value(60)  # Middle C
+        self.pitch_keycenter.set_tooltip_text("The MIDI note at which the sample plays back at its original pitch")
+        self.pitch_keycenter.connect("value-changed", self.update_sfz_output)
+        pitch_row = Adw.ActionRow(title="Pitch Keycenter")
+        pitch_row.add_suffix(self.pitch_keycenter)
+        general_expander.add_row(pitch_row)
+
+        self.low_key_spin = Gtk.SpinButton.new_with_range(0, 127, 1)
+        self.low_key_spin.set_value(24)  # C1
+        self.low_key_spin.set_tooltip_text("The lowest MIDI note to generate a sample for")
+        self.low_key_spin.set_sensitive(True)
+        self.low_key_row = Adw.ActionRow(title="Low Key")
+        self.low_key_row.add_suffix(self.low_key_spin)
+        self.low_key_row.set_visible(True)
+        general_expander.add_row(self.low_key_row)
+
+        self.high_key_spin = Gtk.SpinButton.new_with_range(0, 127, 1)
+        self.high_key_spin.set_value(84)  # C6
+        self.high_key_spin.set_tooltip_text("The highest MIDI note to generate a sample for")
+        self.high_key_spin.set_sensitive(True)
+        self.high_key_row = Adw.ActionRow(title="High Key")
+        self.high_key_row.add_suffix(self.high_key_spin)
+        self.high_key_row.set_visible(True)
+        general_expander.add_row(self.high_key_row)
+
         # Playback controls
         playback_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
         playback_box.set_margin_top(5)
@@ -189,7 +215,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         general_expander.add_row(playback_row)
 
         # --- Loop Settings Expander ---
-        loop_expander = Adw.ExpanderRow(title="Loop Settings", expanded=True)
+        loop_expander = Adw.ExpanderRow(title="Loop / sustain", expanded=True)
         loop_expander.set_expanded(False)
         main_group.add(loop_expander)
 
@@ -244,18 +270,12 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.delay_spin_row.set_value(0)
         self.delay_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
         adsr_expander.add_row(self.delay_spin_row)
-        
+
         self.attack_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
         self.attack_spin_row.set_title("Attack (s)")
         self.attack_spin_row.set_value(0)
         self.attack_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
         adsr_expander.add_row(self.attack_spin_row)
-
-        self.hold_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
-        self.hold_spin_row.set_title("Hold (s)")
-        self.hold_spin_row.set_value(0)
-        self.hold_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
-        adsr_expander.add_row(self.hold_spin_row)
 
         self.decay_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
         self.decay_spin_row.set_title("Decay (s)")
@@ -269,6 +289,12 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.sustain_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
         adsr_expander.add_row(self.sustain_spin_row)
 
+        self.hold_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
+        self.hold_spin_row.set_title("Hold (s)")
+        self.hold_spin_row.set_value(0)
+        self.hold_spin_row.get_adjustment().connect("value-changed", self.update_sfz_output)
+        adsr_expander.add_row(self.hold_spin_row)
+
         self.release_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
         self.release_spin_row.set_title("Release (s)")
         self.release_spin_row.set_value(0)
@@ -279,44 +305,14 @@ class SFZGenerator(Adw.ApplicationWindow):
         adsr_expander.add_row(self.envelope_widget)
 
         # --- Pitch Settings Expander ---
-        pitch_expander = Adw.ExpanderRow(title="Pitch Settings")
-        pitch_expander.set_expanded(False)
-        main_group.add(pitch_expander)
 
-        self.pitch_keycenter = Gtk.SpinButton.new_with_range(0, 127, 1)
-        self.pitch_keycenter.set_value(60)  # Middle C
-        self.pitch_keycenter.set_tooltip_text("The MIDI note at which the sample plays back at its original pitch")
-        self.pitch_keycenter.connect("value-changed", self.update_sfz_output)
-        pitch_row = Adw.ActionRow(title="Pitch Keycenter")
-        pitch_row.add_suffix(self.pitch_keycenter)
-        pitch_expander.add_row(pitch_row)
-
-        self.pitch_shift_check = Gtk.CheckButton(label="Enable Pitch-shifting")
+        self.pitch_shift_check = Gtk.CheckButton(label="Enable")
         self.pitch_shift_check.set_tooltip_text("Generate a separate, pre-pitch-shifted audio file for each note")
         self.pitch_shift_check.set_active(False)
         self.pitch_shift_check.connect("toggled", self.on_pitch_shift_toggled)
-        gen_row = Adw.ActionRow(title="Advanced Generation")
+        gen_row = Adw.ActionRow(title="Pitch shiftting")
         gen_row.add_suffix(self.pitch_shift_check)
-        pitch_expander.add_row(gen_row)
-
-        self.low_key_spin = Gtk.SpinButton.new_with_range(0, 127, 1)
-        self.low_key_spin.set_value(24) # C1
-        self.low_key_spin.set_tooltip_text("The lowest MIDI note to generate a sample for")
-        self.low_key_spin.set_sensitive(False)
-        self.low_key_row = Adw.ActionRow(title="Low Key")
-        self.low_key_row.add_suffix(self.low_key_spin)
-        self.low_key_row.set_visible(False)
-        pitch_expander.add_row(self.low_key_row)
-
-        self.high_key_spin = Gtk.SpinButton.new_with_range(0, 127, 1)
-        self.high_key_spin.set_value(84) # C6
-        self.high_key_spin.set_tooltip_text("The highest MIDI note to generate a sample for")
-        self.high_key_spin.set_sensitive(False)
-        self.high_key_row = Adw.ActionRow(title="High Key")
-        self.high_key_row.add_suffix(self.high_key_spin)
-        self.high_key_row.set_visible(False)
-        pitch_expander.add_row(self.high_key_row)
-
+        main_group.add(gen_row)
 
     def create_waveform_display(self):
         # Create waveform frame
@@ -846,10 +842,10 @@ class SFZGenerator(Adw.ApplicationWindow):
 
     def on_pitch_shift_toggled(self, button):
         is_active = button.get_active()
-        self.low_key_spin.set_sensitive(is_active)
-        self.high_key_spin.set_sensitive(is_active)
-        self.low_key_row.set_visible(is_active)
-        self.high_key_row.set_visible(is_active)
+        # self.low_key_spin.set_sensitive(is_active)
+        # self.high_key_spin.set_sensitive(is_active)
+        # self.low_key_row.set_visible(is_active)
+        # self.high_key_row.set_visible(is_active)
         self.update_sfz_output()
 
     def get_extra_sfz_definitions(self) -> list[str]:
