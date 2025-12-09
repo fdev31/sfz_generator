@@ -77,7 +77,7 @@ class SFZGenerator(Adw.ApplicationWindow):
             "Save the current configuration as an SFZ file or instrument"
         )
         self.save_sfz_button.connect("clicked", self.on_save_sfz)
-        self.header_bar.pack_start(self.save_sfz_button)
+        self.header_bar.pack_end(self.save_sfz_button)
 
         self.spinner = Gtk.Spinner()
         self.header_bar.pack_end(self.spinner)
@@ -180,6 +180,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         # --- Loop Settings Expander ---
         loop_expander = Adw.ExpanderRow(title="Loop Settings", expanded=True)
+        loop_expander.set_expanded(False)
         main_group.add(loop_expander)
 
         self.zero_crossing_check = Gtk.CheckButton(label="Snap to Zero-Crossing")
@@ -225,6 +226,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         # --- Envelope Expander ---
         adsr_expander = Adw.ExpanderRow(title="Envelope (ADSR)", expanded=True)
+        adsr_expander.set_expanded(False)
         main_group.add(adsr_expander)
 
         self.delay_spin_row = Adw.SpinRow.new_with_range(0, 1, 0.01)
@@ -268,6 +270,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         # --- Pitch Settings Expander ---
         pitch_expander = Adw.ExpanderRow(title="Pitch Settings")
+        pitch_expander.set_expanded(False)
         main_group.add(pitch_expander)
 
         self.pitch_keycenter = Gtk.SpinButton.new_with_range(0, 127, 1)
@@ -278,17 +281,13 @@ class SFZGenerator(Adw.ApplicationWindow):
         pitch_row.add_suffix(self.pitch_keycenter)
         pitch_expander.add_row(pitch_row)
 
-        # --- Generation Settings Expander ---
-        gen_expander = Adw.ExpanderRow(title="Generation Settings")
-        main_group.add(gen_expander)
-
         self.pitch_shift_check = Gtk.CheckButton(label="Enable Pitch-shifting")
         self.pitch_shift_check.set_tooltip_text("Generate a separate, pre-pitch-shifted audio file for each note")
         self.pitch_shift_check.set_active(False)
         self.pitch_shift_check.connect("toggled", self.on_pitch_shift_toggled)
         gen_row = Adw.ActionRow(title="Advanced Generation")
         gen_row.add_suffix(self.pitch_shift_check)
-        gen_expander.add_row(gen_row)
+        pitch_expander.add_row(gen_row)
 
         self.low_key_spin = Gtk.SpinButton.new_with_range(0, 127, 1)
         self.low_key_spin.set_value(24) # C1
@@ -297,7 +296,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.low_key_row = Adw.ActionRow(title="Low Key")
         self.low_key_row.add_suffix(self.low_key_spin)
         self.low_key_row.set_visible(False)
-        gen_expander.add_row(self.low_key_row)
+        pitch_expander.add_row(self.low_key_row)
 
         self.high_key_spin = Gtk.SpinButton.new_with_range(0, 127, 1)
         self.high_key_spin.set_value(84) # C6
@@ -306,7 +305,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.high_key_row = Adw.ActionRow(title="High Key")
         self.high_key_row.add_suffix(self.high_key_spin)
         self.high_key_row.set_visible(False)
-        gen_expander.add_row(self.high_key_row)
+        pitch_expander.add_row(self.high_key_row)
 
 
     def create_waveform_display(self):
@@ -923,54 +922,4 @@ class SFZGenerator(Adw.ApplicationWindow):
         )
         self.sfz_buffer.set_text(content)
 
-    def on_download_sfz(self, button):
-        pass # Or remove entirely
-
-        dialog = Gtk.FileChooserNative.new(
-            "Save SFZ File",
-            self,
-            Gtk.FileChooserAction.SAVE,
-            "_Save",
-            "_Cancel",
-        )
-
-        # Set default filename
-        if self.current_sfz_path:
-            # Use the loaded SFZ filename as default
-            dialog.set_current_name(os.path.basename(self.current_sfz_path))
-        else:
-            # Use audio filename as base
-            base_name = Path(self.audio_file_path).stem
-            dialog.set_current_name(f"{base_name}.sfz")
-        
-        if self.current_sfz_path or self.audio_file_path:
-            default_folder_path = os.path.dirname(self.current_sfz_path or self.audio_file_path)
-            dialog.set_current_folder(Gtk.File.new_for_path(default_folder_path))
-
-
-        # Add filter
-        filter_sfz = Gtk.FileFilter()
-        filter_sfz.set_name("SFZ files")
-        filter_sfz.add_pattern("*.sfz")
-        dialog.add_filter(filter_sfz)
-
-        def on_save_response(dialog, response):
-            if response == Gtk.ResponseType.ACCEPT:
-                file = dialog.get_file()
-                if file:
-                    sfz_path = file.get_path()
-
-                    # Get SFZ content
-                    start_iter = self.sfz_buffer.get_start_iter()
-                    end_iter = self.sfz_buffer.get_end_iter()
-                    sfz_content = self.sfz_buffer.get_text(start_iter, end_iter, False)
-
-                    # Save file
-                    with open(sfz_path, "w") as f:
-                        f.write(sfz_content)
-
-            dialog.destroy()
-
-        dialog.connect("response", on_save_response)
-        dialog.show()
 
