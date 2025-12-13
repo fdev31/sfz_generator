@@ -58,7 +58,7 @@ def get_simple_sfz_content(audio_file_path, pitch_keycenter, extra_defs: list[st
     sfz_content = []
     sfz_content.append("<group>")
     sfz_content.append("<region>")
-    sfz_content.append(f"sample={os.path.basename(audio_file_path)}")
+    sfz_content.append(f"sample={audio_file_path}")
     sfz_content.append(f"pitch_keycenter={int(pitch_keycenter)}")
     
     if extra_defs:

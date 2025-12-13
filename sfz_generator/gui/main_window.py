@@ -12,13 +12,18 @@ from pathlib import Path
 import threading
 import sounddevice as sd
 import re
+import queue
+import tempfile
 
+from sfz_generator.audio.jack_client import JackClient
 from sfz_generator.audio.player import play
 from sfz_generator.audio.processing import load_audio
 from sfz_generator.sfz.generator import generate_pitch_shifted_instrument, get_simple_sfz_content
 from sfz_generator.sfz.parser import parse_sfz_file
 from sfz_generator.widgets.envelope_widget import EnvelopeWidget
 from sfz_generator.widgets.waveform_widget import WaveformWidget
+from sfz_generator.widgets.piano_widget import PianoWidget
+from sfz_generator.audio.preview import play_sfz_note
 
 
 class SFZGenerator(Adw.ApplicationWindow):
@@ -40,6 +45,21 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.playback_thread = None
         self.stop_playback_event = threading.Event()
         self.current_sfz_path = None
+        self.playing_notes = {}
+        self.selected_midi_port = None
+
+        # JACK client
+        self.jack_client = JackClient()
+        self.connect("destroy", self.on_destroy)
+
+        # Playback lock for sounddevice
+        self.playback_lock = threading.Lock()
+
+        # Note playback queue
+        self.note_queue = queue.Queue()
+        self.note_playback_thread = threading.Thread(target=self.note_playback_worker)
+        self.note_playback_thread.daemon = True
+        self.note_playback_thread.start()
 
         # Main layout
         self.toolbar_view = Adw.ToolbarView()
@@ -121,6 +141,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         # Update SFZ output initially
         self.update_sfz_output()
+        self.populate_midi_devices()
 
     def on_key_press(self, controller, keyval, keycode, state):
         """Toggles play when SPACE is pressed."""
@@ -213,6 +234,24 @@ class SFZGenerator(Adw.ApplicationWindow):
         playback_row = Adw.ActionRow()
         playback_row.set_child(playback_box)
         general_expander.add_row(playback_row)
+
+        # --- MIDI Preview Expander ---
+        midi_expander = Adw.ExpanderRow(title="MIDI Device", expanded=True)
+        main_group.add(midi_expander)
+
+        self.midi_device_combo = Gtk.ComboBoxText()
+        self.midi_device_combo.set_tooltip_text("Select a MIDI device for preview")
+        self.midi_device_combo.connect("changed", self.on_midi_device_changed)
+
+        midi_device_row = Adw.ActionRow(title="")
+        midi_device_row.add_suffix(self.midi_device_combo)
+        midi_expander.add_row(midi_device_row)
+        
+        refresh_midi_button = Gtk.Button(icon_name="view-refresh-symbolic")
+        refresh_midi_button.set_tooltip_text("Refresh MIDI device list")
+        refresh_midi_button.connect("clicked", lambda w: self.populate_midi_devices())
+        midi_device_row.add_prefix(refresh_midi_button)
+
 
         # --- Loop Settings Expander ---
         loop_expander = Adw.ExpanderRow(title="Loop / sustain", expanded=True)
@@ -377,6 +416,17 @@ class SFZGenerator(Adw.ApplicationWindow):
         sfz_frame.set_child(scrolled)
 
         self.right_panel.append(sfz_frame)
+
+        # Create Piano preview
+        piano_frame = Gtk.Frame()
+        piano_frame.set_label("Piano Preview")
+        self.piano_widget = PianoWidget()
+        self.piano_widget.set_size_request(-1, 80)
+        self.piano_widget.connect("note-on", self.on_piano_press)
+        self.piano_widget.connect("note-off", self.on_piano_release)
+        piano_frame.set_child(self.piano_widget)
+        self.right_panel.append(piano_frame)
+
 
     def on_open_file(self, button):
         dialog = Gtk.FileChooserNative.new(
@@ -944,6 +994,7 @@ class SFZGenerator(Adw.ApplicationWindow):
                 "// The final SFZ file will be generated on save, containing multiple samples.\n"
                 "// ADSR and loop settings will be applied to all samples."
             )
+            self.restart_preview()
             return
             
         content = get_simple_sfz_content(
@@ -952,5 +1003,93 @@ class SFZGenerator(Adw.ApplicationWindow):
             self.get_extra_sfz_definitions()
         )
         self.sfz_buffer.set_text(content)
+        self.restart_preview()
 
+    def note_playback_worker(self):
+        while True:
+            action, note = self.note_queue.get()
+            if action == 'on':
+                if note in self.playing_notes:
+                    continue  # Note already playing
+
+                stop_event = threading.Event()
+                self.playing_notes[note] = stop_event
+                
+                def run_playback(note, stop_event):
+                    GLib.idle_add(self.piano_widget.set_note_active, note)
+
+                    sfz_content = self.sfz_buffer.get_text(
+                        self.sfz_buffer.get_start_iter(),
+                        self.sfz_buffer.get_end_iter(),
+                        True,
+                    )
+                    
+                    # Render a 2-second note. This is long enough to hear loops,
+                    # and short enough to not be a huge waste of rendering time.
+                    # It will be stopped by the note-off event for sustain.
+                    play_sfz_note(sfz_content, note, 4, self.playback_lock, stop_event)
+                    
+                    GLib.idle_add(self.piano_widget.set_note_inactive, note)
+                    if note in self.playing_notes:
+                        del self.playing_notes[note]
+
+                thread = threading.Thread(target=run_playback, args=(note, stop_event))
+                thread.daemon = True
+                thread.start()
+
+            elif action == 'off':
+                if note in self.playing_notes:
+                    self.playing_notes[note].set()
+
+            self.note_queue.task_done()
+
+    def on_piano_press(self, widget, note):
+        self.note_queue.put(('on', note))
+
+    def on_piano_release(self, widget, note):
+        self.note_queue.put(('off', note))
+
+    def populate_midi_devices(self):
+        self.midi_device_combo.remove_all()
+        self.midi_device_combo.append_text("None")
+        self.midi_device_combo.set_active(0)
+        ports = self.jack_client.get_midi_ports()
+        for port in ports:
+            self.midi_device_combo.append_text(port.name)
+
+    def on_midi_device_changed(self, combo):
+        text = combo.get_active_text()
+        if text == "None":
+            if self.selected_midi_port:
+                self.jack_client.disconnect(self.selected_midi_port)
+            self.selected_midi_port = None
+            self.jack_client.stop_preview()
+        else:
+            self.selected_midi_port = text
+            self.restart_preview()
+
+    def restart_preview(self):
+        if not self.selected_midi_port:
+            return
+
+        # Save sfz to a temporary file
+        sfz_content = self.sfz_buffer.get_text(
+            self.sfz_buffer.get_start_iter(),
+            self.sfz_buffer.get_end_iter(),
+            True,
+        )
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix=".sfz", delete=False) as temp_sfz:
+            temp_sfz.write(sfz_content)
+            temp_sfz_path = temp_sfz.name
+
+        self.jack_client.start_preview(temp_sfz_path)
+        self.jack_client.connect(self.selected_midi_port)
+        
+        # Clean up the temp file after a delay
+        # This is not ideal, but we need to give sfizz time to load it.
+        GLib.timeout_add(2000, os.unlink, temp_sfz_path)
+
+    def on_destroy(self, *args):
+        self.jack_client.close()
 
