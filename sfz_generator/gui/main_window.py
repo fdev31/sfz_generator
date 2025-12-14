@@ -47,6 +47,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         self.current_sfz_path = None
         self.playing_notes = {}
         self.selected_midi_port = None
+        self.generated_instrument_path = None
 
         # JACK client
         self.jack_client = JackClient()
@@ -94,7 +95,7 @@ class SFZGenerator(Adw.ApplicationWindow):
 
         self.save_sfz_button = Gtk.Button(label="Save SFZ")
         self.save_sfz_button.set_tooltip_text(
-            "Save the current configuration as an SFZ file or instrument"
+            "Save the current configuration as an SFZ file"
         )
         self.save_sfz_button.connect("clicked", self.on_save_sfz)
         self.header_bar.pack_end(self.save_sfz_button)
@@ -344,14 +345,29 @@ class SFZGenerator(Adw.ApplicationWindow):
         adsr_expander.add_row(self.envelope_widget)
 
         # --- Pitch Settings Expander ---
-
         self.pitch_shift_check = Gtk.CheckButton(label="Enable")
         self.pitch_shift_check.set_tooltip_text("Generate a separate, pre-pitch-shifted audio file for each note")
         self.pitch_shift_check.set_active(False)
         self.pitch_shift_check.connect("toggled", self.on_pitch_shift_toggled)
-        gen_row = Adw.ActionRow(title="Pitch shiftting")
+        gen_row = Adw.ActionRow(title="Pitch shifting")
         gen_row.add_suffix(self.pitch_shift_check)
         main_group.add(gen_row)
+
+        self.process_button = Gtk.Button(label="Process")
+        self.process_button.connect("clicked", self.on_process_clicked)
+        self.process_row = Adw.ActionRow(title="Generate Instrument")
+        self.process_row.add_suffix(self.process_button)
+        main_group.add(self.process_row)
+        
+        self.progress_bar = Gtk.ProgressBar()
+        self.progress_bar.set_show_text(True)
+        self.progress_row = Adw.ActionRow(title="Progress")
+        self.progress_row.add_suffix(self.progress_bar)
+        main_group.add(self.progress_row)
+
+        # Initially hidden
+        self.process_row.set_visible(False)
+        self.progress_row.set_visible(False)
 
     def create_waveform_display(self):
         # Create waveform frame
@@ -474,75 +490,37 @@ class SFZGenerator(Adw.ApplicationWindow):
         dialog.show()
 
     def on_save_sfz(self, button):
-        if self.pitch_shift_check.get_active():
-            if not self.audio_file_path:
-                dialog = Adw.MessageDialog.new(self, "No Audio File", "Please open an audio file first.")
-                dialog.add_response("ok", "OK")
-                dialog.set_modal(True)
-                dialog.present()
-                return
-
-            # Choose a directory to save the instrument
-            file_dialog = Gtk.FileDialog.new()
-            file_dialog.set_title("Save Instrument Folder")
-            if self.audio_file_path:
-                initial_folder = Gio.File.new_for_path(os.path.dirname(self.audio_file_path))
-                file_dialog.set_initial_folder(initial_folder)
-                file_dialog.set_initial_name(Path(self.audio_file_path).stem)
-
-            file_dialog.select_folder(
+        if self.sfz_file is None:
+            dialog = Gtk.FileChooserNative.new(
+                "Save SFZ File",
                 self,
-                None,
-                self._on_folder_selected_for_generation
+                Gtk.FileChooserAction.SAVE,
+                "_Save",
+                "_Cancel",
             )
+            if self.audio_file_path:
+                dialog.set_current_name(Path(self.audio_file_path).stem + ".sfz")
 
-    def _on_folder_selected_for_generation(self, dialog, result):
-        try:
-            folder = dialog.select_folder_finish(result)
-            if folder:
-                output_dir = folder.get_path()
-                # Run generation in background
-                thread = threading.Thread(target=self.generate_pitch_shifted_sfz, args=(output_dir,))
-                thread.daemon = True
-                thread.start()
-            else:
-                print("Folder selection cancelled.")
-        except Exception as e:
-            print(f"Error selecting folder: {e}")
+            filter_sfz = Gtk.FileFilter()
+            filter_sfz.set_name("SFZ files")
+            filter_sfz.add_pattern("*.sfz")
+            dialog.add_filter(filter_sfz)
+
+            dialog.connect("response", self.on_save_sfz_response)
+            dialog.show()
         else:
-            # Simple mode: save single SFZ file
-            if self.sfz_file is None:
-                dialog = Gtk.FileChooserNative.new(
-                    "Save SFZ File",
-                    self,
-                    Gtk.FileChooserAction.SAVE,
-                    "_Save",
-                    "_Cancel",
-                )
-                if self.audio_file_path:
-                    dialog.set_current_name(Path(self.audio_file_path).stem + ".sfz")
-
-                # Add SFZ filter
-                filter_sfz = Gtk.FileFilter()
-                filter_sfz.set_name("SFZ files")
-                filter_sfz.add_pattern("*.sfz")
-                dialog.add_filter(filter_sfz)
-
-                def on_response(dialog, response):
-                    if response == Gtk.ResponseType.ACCEPT:
-                        file = dialog.get_file()
-                        if file:
-                            sfz_path = file.get_path()
-                            if not sfz_path.endswith(".sfz"):
-                                sfz_path += ".sfz"
-                            self.sfz_file = sfz_path
-                            self.save_sfz_file(sfz_path)
-                    dialog.destroy()
-
-                dialog.connect("response", on_response)
-                dialog.show()
-            else:
-                self.save_sfz_file(self.sfz_file)
+            self.save_sfz_file(self.sfz_file)
+            
+    def on_save_sfz_response(self, dialog, response):
+        if response == Gtk.ResponseType.ACCEPT:
+            file = dialog.get_file()
+            if file:
+                sfz_path = file.get_path()
+                if not sfz_path.endswith(".sfz"):
+                    sfz_path += ".sfz"
+                self.sfz_file = sfz_path
+                self.save_sfz_file(sfz_path)
+        dialog.destroy()
 
     def on_load_sfz(self, button):
         dialog = Gtk.FileChooserNative.new(
@@ -892,10 +870,9 @@ class SFZGenerator(Adw.ApplicationWindow):
 
     def on_pitch_shift_toggled(self, button):
         is_active = button.get_active()
-        # self.low_key_spin.set_sensitive(is_active)
-        # self.high_key_spin.set_sensitive(is_active)
-        # self.low_key_row.set_visible(is_active)
-        # self.high_key_row.set_visible(is_active)
+        self.process_row.set_visible(is_active)
+        self.progress_row.set_visible(False)
+        self.generated_instrument_path = None
         self.update_sfz_output()
 
     def get_extra_sfz_definitions(self) -> list[str]:
@@ -948,29 +925,68 @@ class SFZGenerator(Adw.ApplicationWindow):
         
         dialog.set_modal(True)
         dialog.present()
+    
+    def on_process_clicked(self, button):
+        if not self.audio_file_path:
+            dialog = Adw.MessageDialog.new(self, "No Audio File", "Please open an audio file first.")
+            dialog.add_response("ok", "OK")
+            dialog.set_modal(True)
+            dialog.present()
+            return
+
+        file_dialog = Gtk.FileDialog.new()
+        file_dialog.set_title("Save Instrument Folder")
+        if self.audio_file_path:
+            initial_folder = Gio.File.new_for_path(os.path.dirname(self.audio_file_path))
+            file_dialog.set_initial_folder(initial_folder)
+            file_dialog.set_initial_name(Path(self.audio_file_path).stem)
+
+        file_dialog.select_folder(self, None, self._on_folder_selected_for_processing)
+
+    def _on_folder_selected_for_processing(self, dialog, result):
+        try:
+            folder = dialog.select_folder_finish(result)
+            if folder:
+                output_dir = folder.get_path()
+                thread = threading.Thread(target=self.generate_pitch_shifted_sfz, args=(output_dir,))
+                thread.daemon = True
+                thread.start()
+        except Exception as e:
+            print(f"Error selecting folder for processing: {e}")
+
+    def _update_progress(self, current, total):
+        fraction = current / total if total > 0 else 0
+        self.progress_bar.set_fraction(fraction)
+        self.progress_bar.set_text(f"{current} / {total}")
 
     def generate_pitch_shifted_sfz(self, output_dir):
         GLib.idle_add(self.spinner.start)
-        GLib.idle_add(self.save_sfz_button.set_sensitive, False)
+        GLib.idle_add(self.process_button.set_sensitive, False)
+        GLib.idle_add(self.progress_row.set_visible, True)
+        GLib.idle_add(self._update_progress, 0, 1)
 
-        def thread_func():
-            sfz_path, num_successful, num_total = generate_pitch_shifted_instrument(
-                output_dir,
-                self.audio_file_path,
-                int(self.pitch_keycenter.get_value()),
-                int(self.low_key_spin.get_value()),
-                int(self.high_key_spin.get_value()),
-                self.sample_rate,
-                self.get_extra_sfz_definitions()
-            )
+        def progress_callback(current, total):
+            GLib.idle_add(self._update_progress, current, total)
 
-            GLib.idle_add(self.show_generation_complete_dialog, sfz_path, num_successful, num_total)
-            GLib.idle_add(self.spinner.stop)
-            GLib.idle_add(self.save_sfz_button.set_sensitive, True)
+        sfz_path, num_successful, num_total = generate_pitch_shifted_instrument(
+            output_dir,
+            self.audio_file_path,
+            int(self.pitch_keycenter.get_value()),
+            int(self.low_key_spin.get_value()),
+            int(self.high_key_spin.get_value()),
+            self.sample_rate,
+            self.get_extra_sfz_definitions(),
+            progress_callback
+        )
 
-        thread = threading.Thread(target=thread_func)
-        thread.daemon = True
-        thread.start()
+        GLib.idle_add(self.show_generation_complete_dialog, sfz_path, num_successful, num_total)
+        if sfz_path:
+            self.generated_instrument_path = sfz_path
+            GLib.idle_add(self.update_sfz_output)
+
+        GLib.idle_add(self.spinner.stop)
+        GLib.idle_add(self.process_button.set_sensitive, True)
+        GLib.idle_add(self.progress_row.set_visible, False)
 
     def update_envelope_preview(self):
         if not hasattr(self, "envelope_widget"):
@@ -988,21 +1004,48 @@ class SFZGenerator(Adw.ApplicationWindow):
 
     def update_sfz_output(self, *args):
         self.update_envelope_preview()
-        if self.pitch_shift_check.get_active():
-            self.sfz_buffer.set_text(
-                "// Pitch-shifting is enabled.\n"
-                "// The final SFZ file will be generated on save, containing multiple samples.\n"
-                "// ADSR and loop settings will be applied to all samples."
+        
+        if self.generated_instrument_path:
+            current_content = self.sfz_buffer.get_text(
+                self.sfz_buffer.get_start_iter(), self.sfz_buffer.get_end_iter(), True
             )
-            self.restart_preview()
-            return
-            
-        content = get_simple_sfz_content(
-            self.audio_file_path,
-            self.pitch_keycenter.get_value(),
-            self.get_extra_sfz_definitions()
-        )
-        self.sfz_buffer.set_text(content)
+            is_multisample = "<control>" in current_content
+
+            content_lines = []
+            if is_multisample:
+                content_lines = current_content.split('\n')
+            else:
+                try:
+                    with open(self.generated_instrument_path, 'r') as f:
+                        content_lines = f.read().split('\n')
+                except (FileNotFoundError, TypeError):
+                    self.generated_instrument_path = None
+                    self.update_sfz_output()
+                    return
+
+            try:
+                global_start_index = content_lines.index('<global>') + 1
+                group_start_index = content_lines.index('<group>')
+                
+                new_lines = content_lines[:global_start_index] + self.get_extra_sfz_definitions() + content_lines[group_start_index:]
+                new_content = "\n".join(new_lines)
+                
+                self.sfz_buffer.set_text(new_content)
+                
+                with open(self.generated_instrument_path, 'w') as f:
+                    f.write(new_content)
+            except (ValueError, IndexError):
+                self.generated_instrument_path = None
+                self.update_sfz_output()
+                return
+        else:
+            content = get_simple_sfz_content(
+                self.audio_file_path,
+                self.pitch_keycenter.get_value(),
+                self.get_extra_sfz_definitions()
+            )
+            self.sfz_buffer.set_text(content)
+        
         self.restart_preview()
 
     def note_playback_worker(self):
@@ -1024,10 +1067,11 @@ class SFZGenerator(Adw.ApplicationWindow):
                         True,
                     )
                     
-                    # Render a 2-second note. This is long enough to hear loops,
-                    # and short enough to not be a huge waste of rendering time.
-                    # It will be stopped by the note-off event for sustain.
-                    play_sfz_note(sfz_content, note, 4, self.playback_lock, stop_event)
+                    base_dir = None
+                    if self.generated_instrument_path:
+                        base_dir = os.path.dirname(self.generated_instrument_path)
+
+                    play_sfz_note(sfz_content, base_dir, note, 4, self.playback_lock, stop_event)
                     
                     GLib.idle_add(self.piano_widget.set_note_inactive, note)
                     if note in self.playing_notes:
@@ -1072,24 +1116,25 @@ class SFZGenerator(Adw.ApplicationWindow):
         if not self.selected_midi_port:
             return
 
-        # Save sfz to a temporary file
-        sfz_content = self.sfz_buffer.get_text(
-            self.sfz_buffer.get_start_iter(),
-            self.sfz_buffer.get_end_iter(),
-            True,
-        )
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix=".sfz", delete=False) as temp_sfz:
-            temp_sfz.write(sfz_content)
-            temp_sfz_path = temp_sfz.name
+        if self.generated_instrument_path:
+            instrument_dir = os.path.dirname(self.generated_instrument_path)
+            self.jack_client.start_preview(self.generated_instrument_path, cwd=instrument_dir)
+            self.jack_client.connect(self.selected_midi_port)
+        else:
+            sfz_content = self.sfz_buffer.get_text(
+                self.sfz_buffer.get_start_iter(),
+                self.sfz_buffer.get_end_iter(),
+                True,
+            )
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix=".sfz", delete=False) as temp_sfz:
+                temp_sfz.write(sfz_content)
+                temp_sfz_path = temp_sfz.name
 
-        self.jack_client.start_preview(temp_sfz_path)
-        self.jack_client.connect(self.selected_midi_port)
-        
-        # Clean up the temp file after a delay
-        # This is not ideal, but we need to give sfizz time to load it.
-        GLib.timeout_add(2000, os.unlink, temp_sfz_path)
+            self.jack_client.start_preview(temp_sfz_path)
+            self.jack_client.connect(self.selected_midi_port)
+            
+            GLib.timeout_add(2000, os.unlink, temp_sfz_path)
 
     def on_destroy(self, *args):
         self.jack_client.close()
-

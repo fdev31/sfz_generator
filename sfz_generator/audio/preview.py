@@ -65,7 +65,7 @@ def create_sequence_midi(notes_sequence, output_file='sequence.mid', tempo=120, 
     
     return output_file
 
-def play_sfz_note(sfz_content, note, duration_beats, lock, stop_event):
+def play_sfz_note(sfz_content, instrument_base_dir, note, duration_beats, lock, stop_event):
     """
     Generate MIDI for a single note and play it with sfizz_render, 
     respecting different loop modes with interruptible, chunked playback.
@@ -82,7 +82,7 @@ def play_sfz_note(sfz_content, note, duration_beats, lock, stop_event):
 
         try:
             cmd = ['sfizz_render', '--sfz', sfz_file, '--midi', midi_file, '--wav', output_wav]
-            subprocess.run(cmd, check=True, capture_output=True)
+            subprocess.run(cmd, check=True, capture_output=True, cwd=instrument_base_dir)
         except (FileNotFoundError, subprocess.CalledProcessError) as e:
             print(f"Error rendering note: {e}")
             return

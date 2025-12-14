@@ -4,7 +4,8 @@ from sfz_generator.audio.processing import process_midi_note
 
 
 def generate_pitch_shifted_instrument(
-    output_dir, audio_file_path, pitch_keycenter, low_key, high_key, sample_rate, extra_definitions: list[str]
+    output_dir, audio_file_path, pitch_keycenter, low_key, high_key, sample_rate, extra_definitions: list[str],
+    progress_callback=None
 ):
     """Generates a pitch-shifted SFZ instrument.
     """
@@ -21,6 +22,8 @@ def generate_pitch_shifted_instrument(
             futures = {executor.submit(process_midi_note, task): task for task in tasks}
             
             for i, future in enumerate(as_completed(futures)):
+                if progress_callback:
+                    progress_callback(i + 1, num_total)
                 midi, note_name, success, error = future.result()
                 if not success:
                     print(f"Failed to generate {note_name}: {error}")

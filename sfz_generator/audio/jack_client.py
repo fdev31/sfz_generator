@@ -66,7 +66,7 @@ class JackClient:
                 if cmd == "start":
                     preview_process = _stop_process_gracefully(preview_process)
 
-                    sfz_file = args[0]
+                    sfz_file, cwd = args[0]
                     command = [
                         "sfizz_jack",
                         "--jack_autoconnect",
@@ -80,6 +80,7 @@ class JackClient:
                         stdin=subprocess.PIPE,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
+                        cwd=cwd,
                     )
                     # Wait a bit for sfizz to start and register its ports
                     time.sleep(0.5)
@@ -129,8 +130,8 @@ class JackClient:
         except jack.JackError:
             return []
 
-    def start_preview(self, sfz_file):
-        self.command_queue.put(("start", sfz_file))
+    def start_preview(self, sfz_file, cwd=None):
+        self.command_queue.put(("start", (sfz_file, cwd)))
 
     def stop_preview(self):
         self.command_queue.put(("stop",))
