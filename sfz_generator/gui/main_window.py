@@ -251,7 +251,7 @@ class SFZGenerator(Adw.ApplicationWindow):
         refresh_midi_button = Gtk.Button(icon_name="view-refresh-symbolic")
         refresh_midi_button.set_tooltip_text("Refresh MIDI device list")
         refresh_midi_button.connect("clicked", lambda w: self.populate_midi_devices())
-        midi_device_row.add_prefix(refresh_midi_button)
+        midi_expander.add_action(refresh_midi_button)
 
 
         # --- Loop Settings Expander ---
