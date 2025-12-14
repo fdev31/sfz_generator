@@ -34,7 +34,7 @@ def generate_pitch_shifted_instrument(
         if not successful_notes:
             return None, 0, num_total
 
-        sfz_lines = ["<control>", f"default_path={samples_dir_name}", "<global>"] +  extra_definitions + [ "<group>"]
+        sfz_lines = ["<control>", f"default_path={samples_dir_path}/", "<global>"] +  extra_definitions + [ "<group>"]
 
         for midi, note_name in successful_notes:
             out_wav = f"{note_name}.wav"
