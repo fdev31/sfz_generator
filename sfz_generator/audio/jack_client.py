@@ -1,3 +1,4 @@
+import atexit
 import queue
 import subprocess
 import threading
@@ -12,8 +13,11 @@ class JackClient:
     def __init__(self):
         self.client = None
         self.command_queue = queue.Queue()
+        self._closed = False
+        self._close_lock = threading.Lock()
         self.worker_thread = threading.Thread(target=self._worker, daemon=True)
         self.worker_thread.start()
+        atexit.register(self.close)
 
     def _worker(self):
         preview_process = None
@@ -145,7 +149,20 @@ class JackClient:
             return False
 
     def close(self):
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
+
         self.command_queue.put(("shutdown",))
-        self.worker_thread.join()
+        try:
+            # Add a timeout to join to avoid hanging on exit
+            self.worker_thread.join(timeout=3.0)
+        except Exception as e:
+            print(f"Error joining worker thread: {e}")
+
         if self.client:
-            self.client.close()
+            try:
+                self.client.close()
+            except Exception as e:
+                print(f"Error closing jack client: {e}")
