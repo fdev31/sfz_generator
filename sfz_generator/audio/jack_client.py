@@ -1,5 +1,6 @@
-import os
+import queue
 import subprocess
+import threading
 import time
 
 import jack
@@ -10,7 +11,109 @@ PREVIEW_CLIENT_NAME = "sfz_preview"
 class JackClient:
     def __init__(self):
         self.client = None
-        self.preview_process = None
+        self.command_queue = queue.Queue()
+        self.worker_thread = threading.Thread(target=self._worker, daemon=True)
+        self.worker_thread.start()
+
+    def _worker(self):
+        preview_process = None
+        worker_client = None
+
+        def _get_worker_client():
+            nonlocal worker_client
+            if worker_client is None:
+                # Use a different name for the client in the worker thread
+                worker_client = jack.Client("sfz_generator_worker_client")
+            return worker_client
+
+        def _stop_process_gracefully(proc):
+            if not proc or proc.poll() is not None:
+                return None
+
+            try:
+                proc.stdin.write(b"quit\n")
+                proc.stdin.flush()
+                proc.wait(timeout=1.0)
+                return None  # Success
+            except (subprocess.TimeoutExpired, BrokenPipeError, OSError):
+                pass  # Didn't quit gracefully, proceed to kill
+
+            if proc.poll() is None:
+                try:
+                    proc.terminate()  # SIGTERM
+                    proc.wait(timeout=1.0)
+                    return None
+                except (subprocess.TimeoutExpired, OSError):
+                    pass  # Didn't terminate, proceed to force kill
+
+            if proc.poll() is None:
+                try:
+                    proc.kill()  # SIGKILL
+                    proc.wait()
+                except OSError:
+                    pass  # Already dead
+            return None
+
+        while True:
+            try:
+                command_tuple = self.command_queue.get()
+                cmd, *args = command_tuple
+
+                if cmd == "start":
+                    preview_process = _stop_process_gracefully(preview_process)
+
+                    sfz_file = args[0]
+                    command = [
+                        "sfizz_jack",
+                        "--jack_autoconnect",
+                        "1",
+                        "--client_name",
+                        PREVIEW_CLIENT_NAME,
+                        sfz_file,
+                    ]
+                    preview_process = subprocess.Popen(
+                        command,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    # Wait a bit for sfizz to start and register its ports
+                    time.sleep(0.5)
+
+                elif cmd == "stop":
+                    preview_process = _stop_process_gracefully(preview_process)
+
+                elif cmd == "connect":
+                    midi_port = args[0]
+                    client = _get_worker_client()
+                    try:
+                        preview_port = f"{PREVIEW_CLIENT_NAME}:input"
+                        client.connect(midi_port, preview_port)
+                    except jack.JackError as e:
+                        print(f"Failed to connect: {e}")
+
+                elif cmd == "disconnect":
+                    midi_port = args[0]
+                    if worker_client is None:
+                        continue  # No client, so can't be connected.
+                    try:
+                        preview_port = f"{PREVIEW_CLIENT_NAME}:input"
+                        worker_client.disconnect(midi_port, preview_port)
+                    except jack.JackError as e:
+                        print(f"Failed to disconnect: {e}")
+
+                elif cmd == "shutdown":
+                    preview_process = _stop_process_gracefully(preview_process)
+                    if worker_client:
+                        worker_client.close()
+                    break
+            except Exception as e:
+                print(f"Error in JackClient worker thread: {e}")
+                # Ensure shutdown command still exits the loop
+                if "cmd" in locals() and cmd == "shutdown":
+                    if worker_client:
+                        worker_client.close()
+                    break
 
     def get_midi_ports(self):
         if not self.is_jack_server_running():
@@ -23,46 +126,16 @@ class JackClient:
             return []
 
     def start_preview(self, sfz_file):
-        if self.preview_process:
-            self.stop_preview()
-        command = [
-            "sfizz_jack",
-            "--jack_autoconnect",
-            "1",
-            "--client_name",
-            PREVIEW_CLIENT_NAME,
-            sfz_file,
-        ]
-        self.preview_process = subprocess.Popen(command, stdin=subprocess.DEVNULL)
-        # Wait a bit for sfizz to start and register its ports
-        time.sleep(0.5)
+        self.command_queue.put(("start", sfz_file))
 
     def stop_preview(self):
-        if self.preview_process:
-            pid = self.preview_process.pid
-            self.preview_process.terminate()
-            self.preview_process.kill()
-            os.kill(pid, 9)
-            self.preview_process.wait()
-            self.preview_process = None
+        self.command_queue.put(("stop",))
 
     def connect(self, midi_port):
-        if not self.client:
-            self.client = jack.Client("sfz_generator_client")
-        try:
-            preview_port = f"{PREVIEW_CLIENT_NAME}:input"
-            self.client.connect(midi_port, preview_port)
-        except jack.JackError as e:
-            print(f"Failed to connect: {e}")
+        self.command_queue.put(("connect", midi_port))
 
     def disconnect(self, midi_port):
-        if not self.client:
-            return
-        try:
-            preview_port = f"{PREVIEW_CLIENT_NAME}:input"
-            self.client.disconnect(midi_port, preview_port)
-        except jack.JackError as e:
-            print(f"Failed to disconnect: {e}")
+        self.command_queue.put(("disconnect", midi_port))
 
     def is_jack_server_running(self):
         try:
@@ -72,6 +145,7 @@ class JackClient:
             return False
 
     def close(self):
-        self.stop_preview()
+        self.command_queue.put(("shutdown",))
+        self.worker_thread.join()
         if self.client:
             self.client.close()
