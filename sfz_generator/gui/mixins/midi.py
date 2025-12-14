@@ -2,6 +2,7 @@ import os
 import tempfile
 from gi.repository import GLib
 
+
 class MidiMixin:
     def populate_midi_devices(self):
         self.midi_device_combo.remove_all()
@@ -36,12 +37,12 @@ class MidiMixin:
                 self.sfz_buffer.get_end_iter(),
                 True,
             )
-            
-            with tempfile.NamedTemporaryFile(mode='w', suffix=".sfz", delete=False) as temp_sfz:
+
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".sfz", delete=False) as temp_sfz:
                 temp_sfz.write(sfz_content)
                 temp_sfz_path = temp_sfz.name
 
             self.jack_client.start_preview(temp_sfz_path)
             self.jack_client.connect(self.selected_midi_port)
-            
+
             GLib.timeout_add(2000, os.unlink, temp_sfz_path)

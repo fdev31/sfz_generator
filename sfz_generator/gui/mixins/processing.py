@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import threading
 
+
 class ProcessingMixin:
     def show_generation_complete_dialog(self, sfz_path, num_successful, num_total):
         if num_successful == 0:
@@ -13,10 +14,10 @@ class ProcessingMixin:
             if sfz_path:
                 dialog.set_body(f"Instrument saved to:\n{os.path.dirname(sfz_path)}")
             dialog.add_response("ok", "OK")
-        
+
         dialog.set_modal(True)
         dialog.present()
-    
+
     def on_process_clicked(self, button):
         if not self.audio_file_path:
             dialog = Adw.MessageDialog.new(self, "No Audio File", "Please open an audio file first.")
@@ -67,7 +68,7 @@ class ProcessingMixin:
             int(self.high_key_spin.get_value()),
             self.sample_rate,
             self.get_extra_sfz_definitions(),
-            progress_callback
+            progress_callback,
         )
 
         GLib.idle_add(self.show_generation_complete_dialog, sfz_path, num_successful, num_total)

@@ -5,6 +5,7 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Gtk
 
+
 class WaveformMixin:
     def create_waveform_display(self):
         # Create waveform frame

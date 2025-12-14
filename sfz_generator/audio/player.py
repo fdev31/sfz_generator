@@ -1,9 +1,10 @@
 import sounddevice as sd
 from gi.repository import GLib
 
+
 def play(audio_data, sample_rate, loop, loop_start, loop_end, stop_event, error_callback, finished_callback):
     """Plays audio data using sounddevice."""
-    
+
     if audio_data is None:
         GLib.idle_add(finished_callback)
         return

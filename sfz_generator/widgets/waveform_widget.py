@@ -366,9 +366,7 @@ class WaveformWidget(Gtk.DrawingArea):
             if self.pan_start_x is not None:
                 # Calculate pan delta
                 dx = (self.pan_start_x - x) / self.get_width()
-                self.pan_offset = np.clip(
-                    self.pan_offset + dx, 0, 1 - (1 / self.zoom_level)
-                )
+                self.pan_offset = np.clip(self.pan_offset + dx, 0, 1 - (1 / self.zoom_level))
                 self.pan_start_x = x
                 self.queue_draw()
 
@@ -387,26 +385,14 @@ class WaveformWidget(Gtk.DrawingArea):
         marker_threshold = 10  # pixels
 
         # Calculate marker positions in pixels
-        if (
-            self.loop_start is not None
-            and self.loop_start >= start_sample
-            and self.loop_start <= start_sample + visible_samples
-        ):
-            loop_start_px = (
-                (self.loop_start - start_sample) / visible_samples * self.get_width()
-            )
+        if self.loop_start is not None and self.loop_start >= start_sample and self.loop_start <= start_sample + visible_samples:
+            loop_start_px = (self.loop_start - start_sample) / visible_samples * self.get_width()
             if abs(x - loop_start_px) < marker_threshold:
                 self.dragging_marker = "start"
                 return True
 
-        if (
-            self.loop_end is not None
-            and self.loop_end >= start_sample
-            and self.loop_end <= start_sample + visible_samples
-        ):
-            loop_end_px = (
-                (self.loop_end - start_sample) / visible_samples * self.get_width()
-            )
+        if self.loop_end is not None and self.loop_end >= start_sample and self.loop_end <= start_sample + visible_samples:
+            loop_end_px = (self.loop_end - start_sample) / visible_samples * self.get_width()
             if abs(x - loop_end_px) < marker_threshold:
                 self.dragging_marker = "end"
                 return True
@@ -433,9 +419,7 @@ class WaveformWidget(Gtk.DrawingArea):
             if self.zoom_level > 1:
                 # dx is the horizontal scroll delta. Positive is right.
                 pan_delta = dx * 0.01  # Adjust sensitivity
-                self.pan_offset = np.clip(
-                    self.pan_offset + pan_delta, 0, 1 - (1 / self.zoom_level)
-                )
+                self.pan_offset = np.clip(self.pan_offset + pan_delta, 0, 1 - (1 / self.zoom_level))
                 self.queue_draw()
                 self.emit("pan-changed", self.pan_offset)
         elif dy != 0:
@@ -446,9 +430,7 @@ class WaveformWidget(Gtk.DrawingArea):
                 self.zoom_level = max(self.zoom_level / 1.2, 1)
 
             # Keep pan offset within bounds after zoom
-            self.pan_offset = np.clip(
-                self.pan_offset, 0, 1 - (1 / self.zoom_level)
-            )
+            self.pan_offset = np.clip(self.pan_offset, 0, 1 - (1 / self.zoom_level))
             self.queue_draw()
             self.emit("zoom-changed", self.zoom_level)
             self.emit("pan-changed", self.pan_offset)

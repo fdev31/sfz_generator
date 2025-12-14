@@ -7,6 +7,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw
 from sfz_generator.gui.main_window import SFZGenerator
 
+
 class SFZGeneratorApp(Adw.Application):
     def __init__(self):
         super().__init__(application_id="com.example.sfzgenerator")
@@ -19,6 +20,7 @@ class SFZGeneratorApp(Adw.Application):
 def main():
     app = SFZGeneratorApp()
     app.run(sys.argv)
+
 
 if __name__ == "__main__":
     main()

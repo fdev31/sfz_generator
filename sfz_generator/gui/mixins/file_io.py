@@ -1,10 +1,12 @@
 import gi
+
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
 from gi.repository import Gtk, Adw
 from pathlib import Path
 import os
+
 
 class FileIOMixin:
     def on_open_file(self, button):
@@ -73,7 +75,7 @@ class FileIOMixin:
             dialog.show()
         else:
             self.save_sfz_file(self.sfz_file)
-            
+
     def on_save_sfz_response(self, dialog, response):
         if response == Gtk.ResponseType.ACCEPT:
             file = dialog.get_file()
@@ -131,7 +133,6 @@ class FileIOMixin:
             dialog.set_modal(True)
             dialog.present()
 
-
         except Exception as e:
             dialog = Adw.MessageDialog.new(self, "Error", "Failed to save SFZ file")
             dialog.set_body(f"Error: {str(e)}")
@@ -152,18 +153,20 @@ class FileIOMixin:
 
         self.current_sfz_path = sfz_path
         self.sfz_label.set_text(os.path.basename(sfz_path))
-        
+
         if sample_path:
             if os.path.exists(sample_path):
                 self.audio_file_path = sample_path
                 self.load_audio_file()
             else:
                 dialog = Adw.MessageDialog.new(self, "Warning", "Audio file not found")
-                dialog.set_body(f"The referenced audio file was not found at:\n{sample_path}\n\nYou can load it manually using 'Open Audio'.")
+                dialog.set_body(
+                    f"The referenced audio file was not found at:\n{sample_path}\n\nYou can load it manually using 'Open Audio'."
+                )
                 dialog.add_response("ok", "OK")
                 dialog.set_modal(True)
                 dialog.present()
-        
+
         self.update_controls_from_sfz(sfz_data)
 
     def update_controls_from_sfz(self, sfz_data):
@@ -263,7 +266,6 @@ class FileIOMixin:
             self.sustain_spin_row.get_adjustment().handler_unblock_by_func(self.update_sfz_output)
             self.release_spin_row.get_adjustment().handler_unblock_by_func(self.update_sfz_output)
             self.trigger_mode.handler_unblock_by_func(self.on_trigger_mode_changed)
-
 
         # Update SFZ output
         self.update_sfz_output()

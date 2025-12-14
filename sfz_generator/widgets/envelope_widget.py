@@ -91,4 +91,3 @@ class EnvelopeWidget(Gtk.DrawingArea):
         cr.line_to(p6_x, amp_to_y(0))
 
         cr.stroke()
-

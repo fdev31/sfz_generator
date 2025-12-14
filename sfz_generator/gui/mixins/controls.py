@@ -28,11 +28,9 @@ class ControlsMixin:
         sfz_row.add_suffix(self.sfz_label)
         general_expander.add_row(sfz_row)
 
-        self.trigger_strings = Gtk.StringList.new(
-            ["attack", "release", "first", "legato", "release_key"]
-        )
+        self.trigger_strings = Gtk.StringList.new(["attack", "release", "first", "legato", "release_key"])
         self.trigger_mode = Gtk.DropDown(model=self.trigger_strings, tooltip_text="Set the trigger mode for the sample")
-        self.trigger_mode.set_selected(0) # Default to 'attack'
+        self.trigger_mode.set_selected(0)  # Default to 'attack'
         self.trigger_mode.connect("notify::selected", self.on_trigger_mode_changed)
         trigger_row = Adw.ActionRow(title="Trigger Mode")
         trigger_row.add_suffix(self.trigger_mode)
@@ -101,12 +99,11 @@ class ControlsMixin:
         midi_device_row = Adw.ActionRow(title="")
         midi_device_row.add_suffix(self.midi_device_combo)
         midi_expander.add_row(midi_device_row)
-        
+
         refresh_midi_button = Gtk.Button(icon_name="view-refresh-symbolic")
         refresh_midi_button.set_tooltip_text("Refresh MIDI device list")
         refresh_midi_button.connect("clicked", lambda w: self.populate_midi_devices())
         midi_expander.add_action(refresh_midi_button)
-
 
         # --- Loop Settings Expander ---
         loop_expander = Adw.ExpanderRow(title="Loop / sustain", expanded=True)
@@ -117,14 +114,12 @@ class ControlsMixin:
         self.zero_crossing_check.set_tooltip_text("Snap loop points to the nearest zero-crossing to prevent clicks")
         self.zero_crossing_check.set_active(True)
         self.zero_crossing_check.connect("toggled", self.on_zero_crossing_toggled)
-        
+
         zero_crossing_row = Adw.ActionRow(title="Snapping")
         zero_crossing_row.add_suffix(self.zero_crossing_check)
         loop_expander.add_row(zero_crossing_row)
 
-        self.loop_strings = Gtk.StringList.new(
-            ["no_loop", "one_shot", "loop_sustain", "loop_continuous"]
-        )
+        self.loop_strings = Gtk.StringList.new(["no_loop", "one_shot", "loop_sustain", "loop_continuous"])
         self.loop_mode = Gtk.DropDown(model=self.loop_strings, tooltip_text="Set the loop mode for the sample")
         self.loop_mode.set_selected(0)
         self.loop_mode.connect("notify::selected", self.on_loop_mode_changed)
@@ -212,7 +207,7 @@ class ControlsMixin:
         self.process_row = Adw.ActionRow(title="Generate Instrument")
         self.process_row.add_suffix(self.process_button)
         main_group.add(self.process_row)
-        
+
         self.progress_bar = Gtk.ProgressBar()
         self.progress_bar.set_show_text(True)
         self.progress_row = Adw.ActionRow(title="Progress")
@@ -239,16 +234,20 @@ class ControlsMixin:
         loop_start = int(self.loop_start_spin.get_value())
         loop_end = int(self.loop_end_spin.get_value())
 
-        if self.zero_crossing_check.get_active() and self.waveform_widget.zero_crossings is not None and self.waveform_widget.zero_crossings.size > 0:
+        if (
+            self.zero_crossing_check.get_active()
+            and self.waveform_widget.zero_crossings is not None
+            and self.waveform_widget.zero_crossings.size > 0
+        ):
             if spin == self.loop_start_spin:
                 nearest_idx = np.argmin(np.abs(self.waveform_widget.zero_crossings - loop_start))
                 loop_start = self.waveform_widget.zero_crossings[nearest_idx]
-                self.loop_start_spin.set_value(loop_start) 
+                self.loop_start_spin.set_value(loop_start)
             elif spin == self.loop_end_spin:
                 nearest_idx = np.argmin(np.abs(self.waveform_widget.zero_crossings - loop_end))
                 loop_end = self.waveform_widget.zero_crossings[nearest_idx]
                 self.loop_end_spin.set_value(loop_end)
-        
+
         self.loop_start = loop_start
         self.loop_end = loop_end
         self.waveform_widget.set_loop_points(self.loop_start, self.loop_end)

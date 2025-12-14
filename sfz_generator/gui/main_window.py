@@ -28,15 +28,9 @@ from .mixins.sfz_output import SfzOutputMixin
 from .mixins.waveform import WaveformMixin
 
 
-class SFZGenerator(Adw.ApplicationWindow,
-                   ControlsMixin,
-                   FileIOMixin,
-                   MidiMixin,
-                   PlaybackMixin,
-                   ProcessingMixin,
-                   SfzOutputMixin,
-                   WaveformMixin):
-    
+class SFZGenerator(
+    Adw.ApplicationWindow, ControlsMixin, FileIOMixin, MidiMixin, PlaybackMixin, ProcessingMixin, SfzOutputMixin, WaveformMixin
+):
     # To make them available to mixins
     WaveformWidget = WaveformWidget
     PianoWidget = PianoWidget
@@ -114,9 +108,7 @@ class SFZGenerator(Adw.ApplicationWindow,
         self.header_bar.pack_start(self.load_sfz_button)
 
         self.save_sfz_button = Gtk.Button(label="Save SFZ")
-        self.save_sfz_button.set_tooltip_text(
-            "Save the current configuration as an SFZ file"
-        )
+        self.save_sfz_button.set_tooltip_text("Save the current configuration as an SFZ file")
         self.save_sfz_button.connect("clicked", self.on_save_sfz)
         self.header_bar.pack_end(self.save_sfz_button)
 
@@ -129,7 +121,7 @@ class SFZGenerator(Adw.ApplicationWindow,
 
         # Bind toggle button to flap state
         self.flap_toggle.bind_property("active", self.flap, "reveal-flap", GObject.BindingFlags.BIDIRECTIONAL)
-        
+
         # Left panel - Controls - becomes the flap
         self.left_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.left_panel.set_size_request(350, -1)
@@ -137,7 +129,7 @@ class SFZGenerator(Adw.ApplicationWindow,
         self.left_panel.set_margin_bottom(10)
         self.left_panel.set_margin_start(10)
         self.left_panel.set_margin_end(10)
-        
+
         scrolled_flap = Gtk.ScrolledWindow()
         scrolled_flap.set_child(self.left_panel)
         scrolled_flap.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -228,50 +220,44 @@ class SFZGenerator(Adw.ApplicationWindow,
 
     def update_sfz_output(self, *args):
         self.update_envelope_preview()
-        
+
         if self.generated_instrument_path:
-            current_content = self.sfz_buffer.get_text(
-                self.sfz_buffer.get_start_iter(), self.sfz_buffer.get_end_iter(), True
-            )
+            current_content = self.sfz_buffer.get_text(self.sfz_buffer.get_start_iter(), self.sfz_buffer.get_end_iter(), True)
             is_multisample = "<control>" in current_content
 
             content_lines = []
             if is_multisample:
-                content_lines = current_content.split('\n')
+                content_lines = current_content.split("\n")
             else:
                 try:
-                    with open(self.generated_instrument_path, 'r') as f:
-                        content_lines = f.read().split('\n')
+                    with open(self.generated_instrument_path, "r") as f:
+                        content_lines = f.read().split("\n")
                 except (FileNotFoundError, TypeError):
                     self.generated_instrument_path = None
                     self.update_sfz_output()
                     return
 
             try:
-                global_start_index = content_lines.index('<global>') + 1
-                group_start_index = content_lines.index('<group>')
-                
+                global_start_index = content_lines.index("<global>") + 1
+                group_start_index = content_lines.index("<group>")
+
                 new_lines = content_lines[:global_start_index] + self.get_extra_sfz_definitions() + content_lines[group_start_index:]
                 new_content = "\n".join(new_lines)
-                
+
                 self.sfz_buffer.set_text(new_content)
-                
+
                 # Also update the sfz file on disk
                 if os.path.exists(self.generated_instrument_path):
-                    with open(self.generated_instrument_path, 'w') as f:
+                    with open(self.generated_instrument_path, "w") as f:
                         f.write(new_content)
             except (ValueError, IndexError):
                 self.generated_instrument_path = None
                 self.update_sfz_output()
                 return
         else:
-            content = get_simple_sfz_content(
-                self.audio_file_path,
-                self.pitch_keycenter.get_value(),
-                self.get_extra_sfz_definitions()
-            )
+            content = get_simple_sfz_content(self.audio_file_path, self.pitch_keycenter.get_value(), self.get_extra_sfz_definitions())
             self.sfz_buffer.set_text(content)
-        
+
         self.restart_preview()
 
     def on_destroy(self, *args):

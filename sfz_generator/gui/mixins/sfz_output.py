@@ -5,6 +5,7 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Gtk
 
+
 class SfzOutputMixin:
     def create_sfz_output(self):
         # Create SFZ output frame
@@ -40,7 +41,7 @@ class SfzOutputMixin:
         self.right_panel.append(piano_frame)
 
     def on_piano_press(self, widget, note):
-        self.note_queue.put(('on', note))
+        self.note_queue.put(("on", note))
 
     def on_piano_release(self, widget, note):
-        self.note_queue.put(('off', note))
+        self.note_queue.put(("off", note))

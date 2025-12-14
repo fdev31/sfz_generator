@@ -3,6 +3,7 @@ import os
 import tempfile
 from gi.repository import GLib, Adw
 
+
 class PlaybackMixin:
     def on_play_clicked(self, button):
         if not self.is_playing:
@@ -12,7 +13,7 @@ class PlaybackMixin:
             self.stop_button.set_sensitive(True)
 
             self.waveform_widget.set_playback_state(True, self.loop_playback_check.get_active())
-            
+
             args = (
                 self.audio_data_int16,
                 self.sample_rate,
@@ -55,13 +56,13 @@ class PlaybackMixin:
     def note_playback_worker(self):
         while True:
             action, note = self.note_queue.get()
-            if action == 'on':
+            if action == "on":
                 if note in self.playing_notes:
                     continue  # Note already playing
 
                 stop_event = threading.Event()
                 self.playing_notes[note] = stop_event
-                
+
                 def run_playback(note, stop_event):
                     GLib.idle_add(self.piano_widget.set_note_active, note)
 
@@ -70,7 +71,7 @@ class PlaybackMixin:
                         self.sfz_buffer.get_end_iter(),
                         True,
                     )
-                    
+
                     base_dir = None
                     temp_sfz_path = None
 
@@ -97,7 +98,7 @@ class PlaybackMixin:
                 thread.daemon = True
                 thread.start()
 
-            elif action == 'off':
+            elif action == "off":
                 if note in self.playing_notes:
                     self.playing_notes[note].set()
 
