@@ -1061,21 +1061,33 @@ class SFZGenerator(Adw.ApplicationWindow):
                 def run_playback(note, stop_event):
                     GLib.idle_add(self.piano_widget.set_note_active, note)
 
-                    sfz_content = self.sfz_buffer.get_text(
+                    sfz_content_or_path = self.sfz_buffer.get_text(
                         self.sfz_buffer.get_start_iter(),
                         self.sfz_buffer.get_end_iter(),
                         True,
                     )
                     
                     base_dir = None
-                    if self.generated_instrument_path:
-                        base_dir = os.path.dirname(self.generated_instrument_path)
+                    temp_sfz_path = None
 
-                    play_sfz_note(sfz_content, base_dir, note, 4, self.playback_lock, stop_event)
-                    
-                    GLib.idle_add(self.piano_widget.set_note_inactive, note)
-                    if note in self.playing_notes:
-                        del self.playing_notes[note]
+                    try:
+                        if self.generated_instrument_path:
+                            # For generated instruments, relative paths need a file location.
+                            with tempfile.NamedTemporaryFile(mode="w", suffix=".sfz", delete=False) as temp_sfz:
+                                temp_sfz.write(sfz_content_or_path)
+                                temp_sfz_path = temp_sfz.name
+                            sfz_content_or_path = temp_sfz_path
+                            base_dir = os.path.dirname(temp_sfz_path)
+
+                        play_sfz_note(sfz_content_or_path, base_dir, note, 4, self.playback_lock, stop_event)
+
+                    finally:
+                        if temp_sfz_path and os.path.exists(temp_sfz_path):
+                            os.unlink(temp_sfz_path)
+
+                        GLib.idle_add(self.piano_widget.set_note_inactive, note)
+                        if note in self.playing_notes:
+                            del self.playing_notes[note]
 
                 thread = threading.Thread(target=run_playback, args=(note, stop_event))
                 thread.daemon = True
