@@ -131,6 +131,7 @@ class JackClient:
             return []
 
     def start_preview(self, sfz_file, cwd=None):
+        self.command_queue.queue.clear()
         self.command_queue.put(("start", (sfz_file, cwd)))
 
     def stop_preview(self):
